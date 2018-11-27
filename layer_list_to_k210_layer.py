@@ -20,11 +20,8 @@ import tensor_list_to_layer_list
 import numpy as np
 
 
-def hotfix_magic_1(eight_bit_mode):
-    if eight_bit_mode:
-        return 100000000.0 / 3
-    else:
-        return 100000000.0 / 3
+def hotfix_magic_1(eight_bit_mode, scale_max):
+    return (1<<4)/scale_max
 
 
 def log_next_pow_of_2(value):
@@ -226,10 +223,10 @@ class K210BN:
         return {'norm_mul': signed_to_hex(norm_mul, 24), 'norm_add': signed_to_hex(bias, 32), 'norm_shift': norm_shift}
 
     def to_k210(self, swsx=1):
-        __hotfix_magic = hotfix_magic_1(self.eight_bit_mode)
         sqrt_var = np.sqrt(self.var + self.epsilon)
-        scale = swsx * self.gamma / sqrt_var * __hotfix_magic
-        bias = (self.beta - self.gamma * self.mean / sqrt_var) * __hotfix_magic
+        post_scale = hotfix_magic_1(self.eight_bit_mode, max(swsx * self.gamma / sqrt_var))
+        scale = swsx * self.gamma / sqrt_var * post_scale
+        bias = (self.beta - self.gamma * self.mean / sqrt_var) * post_scale
 
         load_para = 1
         bwsx_base_addr = [
@@ -319,13 +316,13 @@ class K210Act:
         return ret_shift, dydx
 
     @staticmethod
-    def table_to_act(act_table, min_y, max_y, eight_bit_mode):
+    def table_to_act(act_table, min_y, max_y, eight_bit_mode, post_scale):
         def act_table_aux(x, y, dydx):
             y_scale = (max_y - min_y) / 255
             y_bias = min_y
-            x_fix = x * hotfix_magic_1(eight_bit_mode)
+            x_fix = x * post_scale
             y_fix = (y - y_bias) / y_scale
-            dydx_fix = dydx / y_scale / hotfix_magic_1(eight_bit_mode)
+            dydx_fix = dydx / y_scale / post_scale
 
             yf_q = round(y_fix)
             yf_err = y_fix - yf_q
@@ -341,7 +338,7 @@ class K210Act:
 
         return [ret_aux(x, y, dydx) for x, y, dydx in act_table]
 
-    def to_k210(self):
+    def to_k210(self, post_scale):
         act_tab = None
         if self.name == 'leaky':
             act_tab = list(K210Act.leaky_table(self.min_y, self.max_y))
@@ -354,7 +351,7 @@ class K210Act:
         else:
             print(self.name, ' active is not supported.')
             assert (None)
-        return {'active_addr': K210Act.table_to_act(list(act_tab), self.min_y, self.max_y, self.eight_bit_mode)[:16]}
+        return {'active_addr': K210Act.table_to_act(list(act_tab), self.min_y, self.max_y, self.eight_bit_mode, post_scale)[:16]}
 
 
 class K210Pool:
@@ -435,6 +432,8 @@ class K210Layer:
         send_data_out = 0
         return locals()
 
+def make_k210_layer_1(iwo_minmax, icbp_shapes, conv_weights, bn_mean_var_gamma_beta_epsilon, act_type, pool_type_size_stride, eight_bit_mode=False):
+    pass
 
 def make_k210_layer(sess, dataset, buffer, last_min, last_max, eight_bit_mode, range_from_batch):
     cur_k210 = K210Layer(eight_bit_mode)
@@ -491,6 +490,7 @@ def make_k210_layer(sess, dataset, buffer, last_min, last_max, eight_bit_mode, r
             if pool_layer.tensor_pool.op.get_attr('padding') == b'SAME':
                 raise ValueError("at {} unsupport padding mode SAME of pooling with size == 2".format(pool_layer.tensor_pool.name))
         cur_k210.pool = K210Pool(pool_type, pool_size, pool_stride)
+
     # hotfix
     elif conv_layer.config['stride'] == 2:
         pool_size = 2

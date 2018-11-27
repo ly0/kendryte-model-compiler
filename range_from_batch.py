@@ -21,6 +21,7 @@ class RangeFromBatchMinMax:
         batch = sess.run(tensor, dataset)
         minv = min(batch.flatten())
         maxv = max(batch.flatten())
+        print('tensor {} min/max = '.format(tensor.name), minv, maxv)
         return minv, maxv, batch
 
 class RangeFromBatchMinMax98:
