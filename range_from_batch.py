@@ -19,8 +19,8 @@ import numpy as np
 class RangeFromBatchMinMax:
     def __call__(self, sess, tensor, dataset, is_weights=False):
         batch = sess.run(tensor, dataset)
-        minv = min(batch.flatten())
-        maxv = max(batch.flatten())
+        minv = batch.min()
+        maxv = batch.max()
         print('tensor {} min/max = '.format(tensor.name), minv, maxv)
         return minv, maxv, batch
 
