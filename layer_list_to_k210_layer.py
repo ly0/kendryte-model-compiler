@@ -444,9 +444,8 @@ def make_k210_layer(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma
     input_min, input_max, weights_min, weights_max, output_min, output_max = iwo_minmax
     input_shape, conv_shape, output_shape = ico_shapes
     conv_weights, conv_isdw = conv_weights_isdw
-    cbap_tensor_info = cbap_tensor_info or []
     conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info, *_ = [
-        *list(cbap_tensor_info), dict(), dict(), dict(), dict()
+        *list(cbap_tensor_info or []), dict(), dict(), dict(), dict()
     ]
 
     ret = K210Layer(eight_bit_mode)
@@ -549,7 +548,7 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         pool_type = 'hotfix_leftPool'
         pool_type_size_stride = [pool_type, pool_size, pool_stride]
         pool_tensor_info = {'name': 'hotfix_pool_for_conv_stride2'}
-        output_shape = [output_shape[0], output_shape[1] / 2, output_shape[2] / 2, output_shape[3]]
+        output_shape = [output_shape[0], int(output_shape[1]) / 2, int(output_shape[2]) / 2, output_shape[3]]
 
     return make_k210_layer(
         iwo_minmax=[input_min, input_max, weights_min, weights_max, act_min_y, act_max_y],
