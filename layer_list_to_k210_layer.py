@@ -56,8 +56,8 @@ class K210Conv:
         self.weights_shape = self.weights.shape
         self.input_shape, self.output_shape = xy_shape
         xmin, xmax, wmin, wmax = xw_minmax
-        self.stride = 1  # layer.config['stride']
-        self.depth_wise_layer = depth_wise_layer  # isinstance(layer, tensor_list_to_layer_list.LayerDepthwiseConvolutional)
+        self.stride = 1
+        self.depth_wise_layer = depth_wise_layer
         self.eight_bit_mode = eight_bit_mode
 
         self.x_range = xmax - xmin
@@ -70,7 +70,6 @@ class K210Conv:
 
         if self.input_shape[1:3] != self.output_shape[1:3]:
             # raise ValueError('conv2d {} should use padding=SAME'.format(input_tensor_name))
-
             print('[error]', 'conv2d {} should use padding=SAME'.format(tensor_info.get('name', 'noname')))
             self.input_shape = list(self.input_shape)
             self.input_shape[1] = self.output_shape[1]
@@ -562,91 +561,6 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         eight_bit_mode=eight_bit_mode,
         cbap_tensor_info=[conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info]
     )
-
-
-#
-# def make_k210_layer(sess, dataset, buffer, last_min, last_max, eight_bit_mode, range_from_batch):
-#     cur_k210 = K210Layer(eight_bit_mode)
-#     conv_layer = None
-#
-#     if isinstance(buffer[-1], tensor_list_to_layer_list.LayerConvolutional) \
-#             or isinstance(buffer[-1], tensor_list_to_layer_list.LayerDepthwiseConvolutional):
-#         conv_layer = buffer.pop()
-#
-#         conv_input_shape = list(sess.run(conv_layer.tensor_conv_x, dataset).shape)
-#         conv_output_shape = list(sess.run(conv_layer.tensor_conv_y, dataset).shape)
-#
-#         # hotfix stride=2
-#         if conv_layer.tensor_conv_y.op.get_attr('strides')[1] == 2:
-#             conv_output_shape[1:3] = [conv_output_shape[1]*2, conv_output_shape[2]*2]
-#             conv_input_shape[1:3] = conv_output_shape[1:3]
-#
-#         wmin, wmax, _ = range_from_batch(sess, conv_layer.tensor_conv_w, dataset, is_weights=True)
-#         cur_k210.conv = K210Conv(
-#             weights=conv_layer.weights,
-#             depth_wise_layer=isinstance(conv_layer, tensor_list_to_layer_list.LayerDepthwiseConvolutional),
-#             eight_bit_mode=eight_bit_mode, xy_shape=[conv_input_shape, conv_output_shape],
-#             xw_minmax=[last_min, last_max, wmin, wmax],
-#             tensor_info={'name': conv_layer.tensor_conv_y.name}
-#         )
-#         if int(conv_layer.config['batch_normalize']) == 1:
-#             cur_k210.bn = K210BN(
-#                 conv_layer.batch_normalize_moving_mean,
-#                 conv_layer.batch_normalize_moving_variance,
-#                 conv_layer.batch_normalize_gamma,
-#                 conv_layer.batch_normalize_beta,
-#                 conv_layer.batch_normalize_epsilon,
-#                 eight_bit_mode
-#             )
-#         else:
-#             bias_shape = conv_layer.bias.shape
-#             cur_k210.bn = K210BN(0, 1, np.ones(bias_shape), conv_layer.bias, 0, eight_bit_mode)
-#
-#         tensor_act = conv_layer.tensor_activation
-#         act_min_y, act_max_y, _ = range_from_batch(sess, tensor_act, dataset)
-#         cur_k210.act = K210Act(act_min_y, act_max_y, conv_layer.config['activation'],
-#                                eight_bit_mode=eight_bit_mode, tensor_info={'name', tensor_act.name})
-#
-#     if len(buffer) > 0 and isinstance(buffer[-1], tensor_list_to_layer_list.LayerPool):
-#         pool_layer = buffer.pop()
-#         assert (isinstance(pool_layer, tensor_list_to_layer_list.LayerPool))
-#         pool_size = pool_layer.config['size']
-#         pool_stride = pool_layer.config['stride']
-#         pool_type = pool_layer.tensor_pool.op.type
-#         # hotfix
-#         if pool_stride == 1 and conv_layer.config['stride'] == 2:
-#             pool_size = 2
-#
-#         if pool_size== 2 and pool_layer.tensor_pool.op.inputs[0].shape[3] % 2 != 0:
-#             if pool_layer.tensor_pool.op.get_attr('padding') == b'SAME':
-#                 raise ValueError("at {} unsupport padding mode SAME of pooling with size == 2".format(pool_layer.tensor_pool.name))
-#         cur_k210.pool = K210Pool(pool_type, pool_size, pool_stride, tensor_info={'name': pool_layer.tensor_pool.op.name})
-#
-#     # hotfix
-#     elif conv_layer.config['stride'] == 2:
-#         pool_size = 2
-#         pool_stride =  2
-#         pool_type = 'hotfix_leftPool'
-#         cur_k210.pool = K210Pool(pool_type, pool_size, pool_stride)
-#
-#     return cur_k210
-
-#
-# def make_id_layer(base_tensor, min_v, max_v, eight_bit_mode, range_from_batch):
-#     o_ch = base_tensor.shape[1]
-#     input_tensor_shape = sess.run(base_tensor, dataset).shape
-#     cur_k210 = K210Layer(eight_bit_mode)
-#     cur_k210.conv = K210Conv(
-#         weights=np.array([[[[1]]]]),
-#         tensor_info={'name': '<id_layer>'},
-#         depth_wise_layer=True,
-#         eight_bit_mode=eight_bit_mode, xy_shape=[input_tensor_shape, input_tensor_shape],
-#         xw_minmax=[min_v, max_v, min_v, max_v]
-#     )
-#     cur_k210.bn = K210BN(0, 1, np.ones(o_ch), np.zeros(o_ch), 0, eight_bit_mode)
-#     cur_k210.act = K210Act(base_tensor, min_v, max_v, 'linear')
-#     cur_k210.pool = None
-#     return cur_k210
 
 
 def k210_layer_post_fix(klayer: K210Layer):
