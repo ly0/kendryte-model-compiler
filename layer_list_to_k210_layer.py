@@ -241,8 +241,8 @@ class K210BN:
 
 
 class K210Act:
-    def __init__(self, min_y, max_y, name, eight_bit_mode, tensor_info=None):
-        self.name = name
+    def __init__(self, min_y, max_y, ty, eight_bit_mode, tensor_info=None):
+        self.ty = ty
         self.eight_bit_mode = eight_bit_mode
         self.min_y = min_y
         self.max_y = max_y
@@ -343,16 +343,16 @@ class K210Act:
 
     def to_k210(self, post_scale):
         act_tab = None
-        if self.name == 'leaky':
+        if self.ty == 'leaky':
             act_tab = list(K210Act.leaky_table(self.min_y, self.max_y))
-        elif self.name == 'Relu':
+        elif self.ty == 'Relu':
             act_tab = list(K210Act.relu_table(self.min_y, self.max_y))
-        elif self.name == 'Relu6':
+        elif self.ty == 'Relu6':
             act_tab = list(K210Act.relu6_table(self.min_y, self.max_y))
-        elif self.name == 'linear':
+        elif self.ty == 'linear':
             act_tab = list(K210Act.linear_table(self.min_y, self.max_y))
         else:
-            assert ValueError(self.name, ' active is not supported.')
+            assert ValueError(self.ty, ' active is not supported.')
         return {'active_addr': K210Act.table_to_act(list(act_tab), self.min_y, self.max_y, self.eight_bit_mode, post_scale)[:16]}
 
 
@@ -435,36 +435,123 @@ class K210Layer:
         send_data_out = 0
         return locals()
 
-def make_k210_layer_1(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma_beta_epsilon, act_type, pool_type_size_stride, eight_bit_mode=False):
+def make_k210_layer_1(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma_beta_epsilon, act_type, pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None):
     input_min, input_max, weights_min, weights_max, output_min, output_max = iwo_minmax
     input_shape, conv_shape, output_shape = ico_shapes
     conv_weights, conv_isdw = conv_weights_isdw
+    cbap_tensor_info = cbap_tensor_info or []
+    conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info, *_ = [*list(cbap_tensor_info), dict(), dict(), dict(), dict()]
 
-    cur_k210 = K210Layer(eight_bit_mode)
-    cur_k210.conv = K210Conv(
+    ret = K210Layer(eight_bit_mode)
+    ret.conv = K210Conv(
         conv_weights,
         conv_isdw,
         eight_bit_mode, [input_shape, conv_shape],
         [input_min, input_max, weights_min, weights_max],
-        tensor_info=dict()
+        tensor_info=conv_tensor_info
     )
 
     bn_mean, bn_var, bn_gamma, bn_beta, bn_epsilon = bn_mean_var_gamma_beta_epsilon
-    cur_k210.bn = K210BN(
+    ret.bn = K210BN(
         bn_mean,
         bn_var,
         bn_gamma,
         bn_beta,
         bn_epsilon,
-        eight_bit_mode
+        eight_bit_mode,
+        tensor_info=bn_tensor_info
     )
 
-    cur_k210.act = K210Act(tensor_act, act_min_y, act_max_y, conv_layer.config['activation'],
-                               eight_bit_mode=eight_bit_mode)
+    ret.act = K210Act(output_min, output_max, act_type,
+                               eight_bit_mode=eight_bit_mode, tensor_info=act_tensor_info)
 
     if pool_type_size_stride is not None:
         pool_type, pool_size, pool_stride = pool_type_size_stride
+        ret.pool = K210Pool(pool_type, pool_size, pool_stride, pool_tensor_info)
 
+    return ret
+
+def make_k210_layer_2(sess, dataset, buffer, input_min, input_max, eight_bit_mode, range_from_batch):
+    pool_tensor_info = {}
+    pool_type_size_stride = None  # bypass pool
+
+    if isinstance(buffer[-1], tensor_list_to_layer_list.LayerConvolutional) \
+            or isinstance(buffer[-1], tensor_list_to_layer_list.LayerDepthwiseConvolutional):
+        conv_layer = buffer.pop()
+
+        input_shape = list(sess.run(conv_layer.tensor_conv_x, dataset).shape)
+        conved_shape = list(sess.run(conv_layer.tensor_conv_y, dataset).shape)
+
+        # hotfix stride=2
+        if conv_layer.tensor_conv_y.op.get_attr('strides')[1] == 2:
+            conved_shape[1:3] = [conved_shape[1]*2, conved_shape[2]*2]
+            input_shape[1:3] = conved_shape[1:3]
+
+        weights_min, weights_max, _ = range_from_batch(sess, conv_layer.tensor_conv_w, dataset, is_weights=True)
+        conv_weights = conv_layer.weights
+        conv_isdw = isinstance(conv_layer, tensor_list_to_layer_list.LayerDepthwiseConvolutional)
+        conv_tensor_info = {'name': conv_layer.tensor_conv_y.name}
+
+        if int(conv_layer.config['batch_normalize']) == 1:
+            bn_mean_var_gamma_beta_epsilon = [
+                conv_layer.batch_normalize_moving_mean,
+                conv_layer.batch_normalize_moving_variance,
+                conv_layer.batch_normalize_gamma,
+                conv_layer.batch_normalize_beta,
+                conv_layer.batch_normalize_epsilon
+            ]
+            bn_tensor_info = {'name': 'bn'}
+        else:
+            bias_shape = conv_layer.bias.shape
+            bn_mean_var_gamma_beta_epsilon = [
+                0, 1, np.ones(bias_shape), conv_layer.bias, 0
+            ]
+            bn_tensor_info = {'name': 'bn'}
+
+        tensor_act = conv_layer.tensor_activation
+        act_min_y, act_max_y, _ = range_from_batch(sess, tensor_act, dataset)
+        act_type = conv_layer.config['activation']
+        act_tensor_info = {'name', tensor_act.name if tensor_act is not None else 'default_linear'}
+        output_shape = tensor_act.shape
+    else:
+        raise ValueError('unsupported type seq: ', *[type(l) for l in buffer])
+
+    if len(buffer) > 0 and isinstance(buffer[-1], tensor_list_to_layer_list.LayerPool):
+        pool_layer = buffer.pop()
+        assert (isinstance(pool_layer, tensor_list_to_layer_list.LayerPool))
+        pool_size = pool_layer.config['size']
+        pool_stride = pool_layer.config['stride']
+        pool_type = pool_layer.tensor_pool.op.type
+        # hotfix
+        if pool_stride == 1 and conv_layer.config['stride'] == 2:
+            pool_size = 2
+
+        if pool_size== 2 and pool_layer.tensor_pool.op.inputs[0].shape[3] % 2 != 0:
+            if pool_layer.tensor_pool.op.get_attr('padding') == b'SAME':
+                raise ValueError("at {} unsupport padding mode SAME of pooling with size == 2".format(pool_layer.tensor_pool.name))
+
+        pool_type_size_stride = [pool_type, pool_size, pool_stride]
+        pool_tensor_info = {'name': pool_layer.tensor_pool.op.name}
+
+    # hotfix
+    elif conv_layer.config['stride'] == 2:
+        pool_size = 2
+        pool_stride =  2
+        pool_type = 'hotfix_leftPool'
+        pool_type_size_stride = [pool_type, pool_size, pool_stride]
+        pool_tensor_info = {'name': 'hotfix_pool_for_conv_stride2'}
+        output_shape = [output_shape[0], output_shape[1]/2, output_shape[2]/2, output_shape[3]]
+
+    return make_k210_layer_1(
+        iwo_minmax=[input_min, input_max, weights_min, weights_max, act_min_y, act_max_y],
+        ico_shapes=[input_shape, conved_shape, output_shape],
+        conv_weights_isdw=[conv_weights, conv_isdw],
+        bn_mean_var_gamma_beta_epsilon=bn_mean_var_gamma_beta_epsilon,
+        act_type=act_type,
+        pool_type_size_stride = pool_type_size_stride,
+        eight_bit_mode=eight_bit_mode,
+        cbap_tensor_info=[conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info]
+    )
 
 def make_k210_layer(sess, dataset, buffer, last_min, last_max, eight_bit_mode, range_from_batch):
     cur_k210 = K210Layer(eight_bit_mode)
@@ -488,7 +575,7 @@ def make_k210_layer(sess, dataset, buffer, last_min, last_max, eight_bit_mode, r
             depth_wise_layer=isinstance(conv_layer, tensor_list_to_layer_list.LayerDepthwiseConvolutional),
             eight_bit_mode=eight_bit_mode, xy_shape=[conv_input_shape, conv_output_shape],
             xw_minmax=[last_min, last_max, wmin, wmax],
-            tensor_info={'name': '<id_layer>'}
+            tensor_info={'name': conv_layer.tensor_conv_y.name}
         )
         if int(conv_layer.config['batch_normalize']) == 1:
             cur_k210.bn = K210BN(
@@ -545,7 +632,7 @@ def make_id_layer(base_tensor, min_v, max_v, eight_bit_mode, range_from_batch):
         xw_minmax=[min_v, max_v, min_v, max_v]
     )
     cur_k210.bn = K210BN(0, 1, np.ones(o_ch), np.zeros(o_ch), 0, eight_bit_mode)
-    cur_k210.act = K210Act(base_tensor, min_v, max_v, 'linear', eight_bit_mode=eight_bit_mode)
+    cur_k210.act = K210Act(base_tensor, min_v, max_v, 'linear')
     cur_k210.pool = None
     return cur_k210
 
@@ -573,10 +660,10 @@ def gen_k210_layers(layers: [tensor_list_to_layer_list.LayerBase], sess, dataset
             last_max = input_max
 
 
-        cur_k210 = make_k210_layer(
+        cur_k210 = make_k210_layer_2(
             sess=sess, dataset=dataset,
             buffer=buffer,
-            last_min=last_min, last_max=last_max,
+            input_min=last_min, input_max=last_max,
             eight_bit_mode=eight_bit_mode,
             range_from_batch=range_from_batch
         )
