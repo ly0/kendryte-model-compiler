@@ -108,7 +108,7 @@ def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_mi
         layers = tensor_list_to_layer_list.convert_to_layers(sess, dataset, converter.dst)
         k210_layers = layer_list_to_k210_layer.gen_k210_layers(
             layers, sess, dataset,
-            range_from_batch=range_from_batch.RangeFromBatchMeanMinsMaxs(),
+            range_from_batch=range_from_batch.RangeFromBatchMinMax(),
             eight_bit_mode=eight_bit_mode,
             input_min=input_min,
             input_max=input_max

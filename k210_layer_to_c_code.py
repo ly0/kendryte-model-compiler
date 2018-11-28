@@ -63,16 +63,16 @@ def gen_layer_struct(klayer: layer_list_to_k210_layer.K210Layer, idx: int):
     img_ram_size = 2 * 1024 * 1024
 
     conv_arg = klayer.conv and klayer.conv.to_k210() or default_conv_arg
-    act_arg = klayer.act and klayer.act.to_k210() or default_act_arg
     bn_arg = klayer.bn and klayer.bn.to_k210(conv_arg['swsx']) or default_bn_arg
+    act_arg = klayer.act and klayer.act.to_k210(bn_arg['post_scale']) or default_act_arg
     pool_arg = klayer.pool and klayer.pool.to_k210() or default_pool_arg
-    io_arg = klayer.to_k210(idx)
+    io_arg = klayer.to_k210()
 
     mino, maxo = klayer.act.min_y, klayer.act.max_y
     if klayer.pool:
-        tensor_out_name = klayer.pool.pool_type
+        tensor_out_name = klayer.pool.tensor_info.get('name', 'no_name')
     else:
-        tensor_out_name = klayer.act.tensor.op.name
+        tensor_out_name = klayer.bn.tensor_info.get('name', 'no_name')
 
     output_scale, output_bias = min_max_to_scale_bias(mino, maxo)
     print("[layer {}]".format(idx), tensor_out_name, 'scale/bias:', output_scale, output_bias)
