@@ -33,6 +33,11 @@ def log_next_pow_of_2(value):
 
     return ret, value
 
+def pow_next_log_of_2_no_round(value, bound_shift, shift_max_shift=4):
+    mul, shift = np.frexp(np.abs(value))
+    ret = bound_shift - 1 - shift
+    mul = np.sign(value) * mul * np.power(2, bound_shift - 1)
+    return ret, mul
 
 def pow_next_log_of_2(value, bound_shift, shift_max_shift=4):
     ret = 0
@@ -222,19 +227,32 @@ class K210BN:
 
     @staticmethod
     def get_bn(scale, bias):
-        norm_shift, norm_mul = pow_next_log_of_2(scale, 24)
+        norm_shift, norm_mul = 15, scale
         return {'norm_mul': signed_to_hex(norm_mul, 24), 'norm_add': signed_to_hex(bias, 32), 'norm_shift': norm_shift}
 
     def to_k210(self, swsx=1):
-        sqrt_var = np.sqrt(self.var + self.epsilon)
-        post_scale = hotfix_magic_1(self.eight_bit_mode, max(swsx * self.gamma / sqrt_var))
-        scale = swsx * self.gamma / sqrt_var * post_scale
-        bias = (self.beta - self.gamma * self.mean / sqrt_var) * post_scale
+        rsqrt_var = 1.0 / np.sqrt(self.var + self.epsilon)
+
+        scale = self.gamma * rsqrt_var
+        bias = self.beta - self.gamma * self.mean * rsqrt_var
+
+        bmax = max(abs(np.min(scale)), abs(np.max(scale)))
+        brange = bmax
+        sb = brange / 255
+        swsxsb = swsx * sb
+        out_shift, out_mul = pow_next_log_of_2_no_round(swsxsb, 15)
+
+        bn_shift = 15
+        act_shift = out_shift - bn_shift
+        post_scale = out_mul / np.round(out_mul) * np.power(2, act_shift)
+
+        scale = [int(round(item)) for item in scale / sb * out_mul]
+        bias = [int(round(item)) for item in bias * post_scale]
 
         load_para = 1
         bwsx_base_addr = [
             self.get_bn(s, b)
-            for s, b in zip(scale.tolist(), bias.tolist())
+            for s, b in zip(scale, bias)
         ]
 
         return locals()
