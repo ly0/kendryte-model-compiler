@@ -15,10 +15,9 @@
  '''
 
 import math
-
 import tensor_list_to_layer_list
 import numpy as np
-
+import tools
 
 def hotfix_magic_1(eight_bit_mode, scale_max):
     # 36bit before and after bn
@@ -440,14 +439,25 @@ class K210Layer:
 
 
 def make_k210_layer(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma_beta_epsilon, act_type,
-                    pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None):
+                    pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None, idx=-1):
     input_min, input_max, weights_min, weights_max, output_min, output_max = iwo_minmax
     input_shape, conv_shape, output_shape = ico_shapes
     conv_weights, conv_isdw = conv_weights_isdw
-    cbap_tensor_info = cbap_tensor_info or []
     conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info, *_ = [
-        *list(cbap_tensor_info), dict(), dict(), dict(), dict()
+        *list(cbap_tensor_info or []), dict(), dict(), dict(), dict()
     ]
+
+    output_name = pool_tensor_info.get('name') or act_tensor_info.get('name', 'noname')
+    output_scale, output_bias = tools.min_max_to_scale_bias(output_min, output_max)
+    layer_shape_trans = [
+        int(input_shape[1]), int(input_shape[2]), int(input_shape[3]),
+        int(output_shape[1]), int(output_shape[2]), int(output_shape[3])
+    ]
+    print(
+        "[layer {}]".format(idx), output_name,
+        'shape(WHC): {}x{}x{} => {}x{}x{}'.format(*layer_shape_trans),
+        'scale/bias:', output_scale, output_bias
+    )
 
     ret = K210Layer(eight_bit_mode)
     ret.conv = K210Conv(
@@ -479,8 +489,8 @@ def make_k210_layer(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma
     return ret
 
 
-def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eight_bit_mode, range_from_batch):
-    pool_tensor_info = {}
+def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eight_bit_mode, range_from_batch, idx):
+    pool_tensor_info = dict()
     pool_type_size_stride = None  # bypass pool
 
     if isinstance(buffer[-1], tensor_list_to_layer_list.LayerConvolutional) \
@@ -519,7 +529,7 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         tensor_act = conv_layer.tensor_activation
         act_min_y, act_max_y, _ = range_from_batch(sess, tensor_act, dataset)
         act_type = conv_layer.config['activation']
-        act_tensor_info = {'name', tensor_act.name if tensor_act is not None else 'default_linear'}
+        act_tensor_info = {'name': tensor_act.name if tensor_act is not None else 'default_linear'}
         output_shape = tensor_act.shape
     else:
         raise ValueError('unsupported type seq: ', *[type(l) for l in buffer])
@@ -549,7 +559,6 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         pool_type = 'hotfix_leftPool'
         pool_type_size_stride = [pool_type, pool_size, pool_stride]
         pool_tensor_info = {'name': 'hotfix_pool_for_conv_stride2'}
-        output_shape = [output_shape[0], output_shape[1] / 2, output_shape[2] / 2, output_shape[3]]
 
     return make_k210_layer(
         iwo_minmax=[input_min, input_max, weights_min, weights_max, act_min_y, act_max_y],
@@ -559,7 +568,8 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         act_type=act_type,
         pool_type_size_stride=pool_type_size_stride,
         eight_bit_mode=eight_bit_mode,
-        cbap_tensor_info=[conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info]
+        cbap_tensor_info=[conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info],
+        idx=idx
     )
 
 
@@ -590,7 +600,8 @@ def gen_k210_layers(layers: [tensor_list_to_layer_list.LayerBase], sess, dataset
             buffer=buffer,
             input_min=last_min, input_max=last_max,
             eight_bit_mode=eight_bit_mode,
-            range_from_batch=range_from_batch
+            range_from_batch=range_from_batch,
+            idx=len(ret)
         )
 
         cur_k210_fixed = k210_layer_post_fix(cur_k210)
