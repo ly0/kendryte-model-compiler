@@ -449,7 +449,15 @@ def make_k210_layer(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma
 
     output_name = pool_tensor_info.get('name') or act_tensor_info.get('name', 'noname')
     output_scale, output_bias = tools.min_max_to_scale_bias(output_min, output_max)
-    print("[layer {}]".format(idx), output_name, 'scale/bias:', output_scale, output_bias)
+    layer_shape_trans = [
+        int(input_shape[1]), int(input_shape[2]), int(input_shape[3]),
+        int(output_shape[1]), int(output_shape[2]), int(output_shape[3])
+    ]
+    print(
+        "[layer {}]".format(idx), output_name,
+        'shape(WHC): {}x{}x{} => {}x{}x{}'.format(*layer_shape_trans),
+        'scale/bias:', output_scale, output_bias
+    )
 
     ret = K210Layer(eight_bit_mode)
     ret.conv = K210Conv(
@@ -551,7 +559,6 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         pool_type = 'hotfix_leftPool'
         pool_type_size_stride = [pool_type, pool_size, pool_stride]
         pool_tensor_info = {'name': 'hotfix_pool_for_conv_stride2'}
-        output_shape = [output_shape[0], int(output_shape[1]) / 2, int(output_shape[2]) / 2, output_shape[3]]
 
     return make_k210_layer(
         iwo_minmax=[input_min, input_max, weights_min, weights_max, act_min_y, act_max_y],
