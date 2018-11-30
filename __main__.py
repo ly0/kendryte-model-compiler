@@ -29,6 +29,7 @@ import tensor_list_to_layer_list
 import layer_list_to_k210_layer
 import k210_layer_to_c_code
 import k210_layer_to_bin
+import tools
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -110,6 +111,8 @@ def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_mi
         rfb = range_from_batch.RangeFromBatchMinMax()
         if input_minmax_auto:
             input_min, input_max, = rfb(sess, tensor_input, dataset)
+            in_scale, in_bias = tools.min_max_to_scale_bias(input_min, input_max)
+            print('[layer input] scale/bias:', in_scale, in_bias)
 
         k210_layers = layer_list_to_k210_layer.gen_k210_layers(
             layers, sess, dataset,
