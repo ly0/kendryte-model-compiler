@@ -101,14 +101,19 @@ def box_image(im_path, new_w, new_h):
     return box_im, resized
 
 
-def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_min=0, input_max=1, prefix=''):
+def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0, input_max=1, prefix=''):
     with tf.Session() as sess:
         converter = tensor_head_to_tensor_list.PbConverter(tensor_output, tensor_input)
         converter.convert()
         layers = tensor_list_to_layer_list.convert_to_layers(sess, dataset, converter.dst)
+
+        rfb = range_from_batch.RangeFromBatchMinMax()
+        if input_minmax_auto:
+            input_min, input_max, = rfb(sess, tensor_input, dataset)
+
         k210_layers = layer_list_to_k210_layer.gen_k210_layers(
             layers, sess, dataset,
-            range_from_batch=range_from_batch.RangeFromBatchMinMax(),
+            range_from_batch=rfb,
             eight_bit_mode=eight_bit_mode,
             input_min=input_min,
             input_max=input_max
@@ -140,6 +145,7 @@ def main():
     parser.add_argument('--tensor_output_name', default=None)
     parser.add_argument('--tensor_input_min', type=float, default=0)
     parser.add_argument('--tensor_input_max', type=float, default=1)
+    parser.add_argument('--tensor_input_minmax_auto', type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument('--dataset_input_name', default='input:0')
     parser.add_argument('--dataset_pic_path', default='dataset/yolo')
     parser.add_argument('--image_w', type=int, default=320)
@@ -165,6 +171,7 @@ def main():
     tensor_output_name = args.tensor_output_name or args.tensor_head_name
     input_min = args.tensor_input_min
     input_max = args.tensor_input_max
+    input_minmax_auto = args.tensor_input_minmax_auto
     dataset_input_name = args.dataset_input_name
     dataset_pic_path = args.dataset_pic_path
     image_w = args.image_w
@@ -207,6 +214,7 @@ def main():
         tensor_output, tensor_input,
         dataset,
         eight_bit_mode=eight_bit_mode,
+        input_minmax_auto=input_minmax_auto,
         input_min=input_min,
         input_max=input_max,
         prefix=prefix
