@@ -74,11 +74,7 @@ class K210Conv:
         assert (self.w_range > 0)
 
         if self.input_shape[1:3] != self.output_shape[1:3]:
-            # raise ValueError('conv2d {} should use padding=SAME'.format(input_tensor_name))
-            print('[error]', 'conv2d {} should use padding=SAME'.format(tensor_info.get('name', 'noname')))
-            self.input_shape = list(self.input_shape)
-            self.input_shape[1] = self.output_shape[1]
-            self.input_shape[2] = self.output_shape[2]
+            raise ValueError('conv2d {} should use padding=SAME'.format(tensor_info.get('name', 'noname')))
 
         if self.input_shape[1] < 4:
             tensor_height = self.input_shape[1]
@@ -531,10 +527,10 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         input_shape = list(sess.run(conv_layer.tensor_conv_x, dataset).shape)
         conved_shape = list(sess.run(conv_layer.tensor_conv_y, dataset).shape)
 
-        # # hotfix stride=2
-        # if conv_layer.tensor_conv_y.op.get_attr('strides')[1] == 2:
-        #     conved_shape[1:3] = [conved_shape[1] * 2, conved_shape[2] * 2]
-        #     input_shape[1:3] = conved_shape[1:3]
+        if conv_layer.tensor_conv_x.op.type == 'SpaceToBatchND':
+            print('[warning] found SpaceToBatchND fix input_shape/')
+            input_shape[1] = input_shape[1]-2
+            input_shape[2] = input_shape[2]-2
 
         weights_min, weights_max, _ = range_from_batch(sess, conv_layer.tensor_conv_w, dataset, is_weights=True)
         conv_weights = conv_layer.weights
@@ -571,9 +567,6 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
         pool_size = pool_layer.config['size']
         pool_stride = pool_layer.config['stride']
         pool_type = pool_layer.tensor_pool.op.type
-        # # hotfix
-        # if pool_stride == 1 and conv_layer.config['stride'] == 2:
-        #     pool_size = 2
 
         if pool_size == 2 and pool_layer.tensor_pool.op.inputs[0].shape[3] % 2 != 0:
             if pool_layer.tensor_pool.op.get_attr('padding') == b'SAME':
@@ -582,14 +575,6 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
 
         pool_type_size_stride = [pool_type, pool_size, pool_stride]
         pool_tensor_info = {'name': pool_layer.tensor_pool.op.name}
-
-    # # hotfix
-    # elif conv_layer.config['stride'] == 2:
-    #     pool_size = 2
-    #     pool_stride = 2
-    #     pool_type = 'hotfix_leftPool'
-    #     pool_type_size_stride = [pool_type, pool_size, pool_stride]
-    #     pool_tensor_info = {'name': 'hotfix_pool_for_conv_stride2'}
 
     return {
         'iwo_minmax':[input_min, input_max, weights_min, weights_max, act_min_y, act_max_y],
@@ -615,7 +600,7 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
             kl_args_fixed = dict(kl_args)
 
             conv_kernel_size = int(conv_weights.shape[0])
-            conv_stride = (int(input_shape[2])+1)/int(conv_shape[2])
+            conv_stride = int((int(input_shape[2])+1)/int(conv_shape[2]))
             def expand_wh(shape_):
                 shape_1 = shape_[1] * 2
                 shape_2 = shape_[2] * 2
@@ -645,11 +630,26 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
 
 
-            if conv_isdw and conv_stride == 2:
-                lack_of_left_pooling = True
-                conv_shape = expand_wh(conv_shape)
-                output_shape = expand_wh(output_shape)
-                kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
+            if conv_stride == 2:
+                if not conv_isdw:
+                    if pool_type_size_stride is None:
+                        # fix in current layer
+                        conv_shape = expand_wh(conv_shape)
+                        kl_args_fixed['pool_type_size_stride'] = ['leftPool', 2, 2]
+                        kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
+                    else:
+                        # fix later
+                        lack_of_left_pooling = True
+                        conv_shape = expand_wh(conv_shape)
+                        output_shape = expand_wh(output_shape)
+                        kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
+                else:
+                    # dw layer needs to fix it later
+                    lack_of_left_pooling = True
+                    conv_shape = expand_wh(conv_shape)
+                    output_shape = expand_wh(output_shape)
+                    kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
+
 
             ret.append(kl_args_fixed)
 
