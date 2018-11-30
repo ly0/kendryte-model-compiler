@@ -590,7 +590,12 @@ def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eig
 
 
 def k210_layer_post_fix(kl_args_list: [K210Layer]):
-    def fix_dw_with_strde2(kl_args_list):
+    def fix_dw_with_strde2(kl_args_list: [K210Layer]):
+        def expand_wh(shape_):
+            shape_1 = shape_[1] * 2
+            shape_2 = shape_[2] * 2
+            return [shape_[0], shape_1, shape_2, shape_[3]]
+
         ret = []
         lack_of_left_pooling = False
         for kl_args in kl_args_list:
@@ -601,10 +606,6 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
 
             conv_kernel_size = int(conv_weights.shape[0])
             conv_stride = int((int(input_shape[2])+1)/int(conv_shape[2]))
-            def expand_wh(shape_):
-                shape_1 = shape_[1] * 2
-                shape_2 = shape_[2] * 2
-                return [shape_[0], shape_1, shape_2, shape_[3]]
 
             if lack_of_left_pooling:
                 if not conv_isdw and conv_kernel_size==1 and pool_type_size_stride is None:
@@ -657,6 +658,28 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
             raise ValueError('run fix_dw_with_strde2 failed. no more layers for fix.')
         return ret
 
+    def fix_wh_leas_than_4(kl_args_list: [K210Layer]):
+        def force_pad_to_4(shape_):
+                return [shape_[0], 4, 4, shape_[3]]
+
+        ret = []
+        for kl_args in kl_args_list:
+            input_shape, conv_shape, output_shape = kl_args['ico_shapes']
+            kl_args_fixed = dict(kl_args)
+
+
+            if input_shape[1] < 4 or conv_shape[1] < 4 or output_shape[1] < 4:
+                input_shape = force_pad_to_4(input_shape)
+                conv_shape = force_pad_to_4(conv_shape)
+                output_shape = force_pad_to_4(output_shape)
+                kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
+
+            ret.append(kl_args_fixed)
+
+        return ret
+
+
+    kl_args_list = fix_wh_leas_than_4(kl_args_list)
     kl_args_list = fix_dw_with_strde2(kl_args_list)
     return kl_args_list
 
