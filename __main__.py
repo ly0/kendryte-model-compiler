@@ -200,7 +200,10 @@ def main():
     if os.path.isdir(dataset_pic_path):
         import random
         all_files = os.listdir(dataset_pic_path)
-        all_files = random.sample(all_files, min(128, len(all_files)))  # set maxmum dataset size
+        if len(all_files) > 128:
+            print('[warning] you have too many dataset, may slow down this process. force sampled to 128 items of them.')
+            all_files = random.sample(all_files, 128)  # set maxmum dataset size
+
         dataset_file_list = [
             os.path.join(dataset_pic_path, f)
             for f in all_files

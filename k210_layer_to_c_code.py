@@ -174,7 +174,7 @@ def gen_bn_code(dlayer, idx, prefix):
                      '.norm_add = ' + str(bn['norm_add']) + ', ' +
                      '.norm_shift = ' + str(bn['norm_shift']) +
                      '}}') for bn in bn_list]
-    return 'kpu_batchnorm_argument_t ' + prefix + 'bwsx_base_addr_' + str(
+    return 'static kpu_batchnorm_argument_t ' + prefix + 'bwsx_base_addr_' + str(
         idx) + '[] __attribute__((aligned(128))) = {\n' + ',\n'.join(bn_code_list) + '\n};'
 
 
@@ -195,7 +195,7 @@ def gen_act_code(dlayer, idx, prefix):
             ' .activate_para_bias1.data = {{\n  .result_bias = {{{},{},{},{},{},{},{},{}}}\n }}'
     ).format(*(bias_list[8:]))
 
-    return 'kpu_activate_table_t ' + prefix + 'active_addr_' + str(idx) + ' __attribute__((aligned(128))) = {\n' + \
+    return 'static kpu_activate_table_t ' + prefix + 'active_addr_' + str(idx) + ' __attribute__((aligned(128))) = {\n' + \
            ',\n'.join([active_para, active_para_bias0, active_para_bias1]) + \
            '\n};'
 
@@ -207,7 +207,7 @@ def gen_weights_code(dlayer, idx, eight_bit_mode, prefix):
         tools.signed_to_hex(item, 8 if eight_bit_mode else 16)
         for item, i in zip(weights, range(len(weights)))
     ])
-    para_type = 'uint8_t' if eight_bit_mode else 'uint16_t'
+    para_type = 'static uint8_t' if eight_bit_mode else 'static uint16_t'
     return para_type + \
            ' {prefix}para_start_addr_{idx}[] __attribute__((aligned(128))) = {{{data}}};'\
                .format(idx=idx, data=weights_data, prefix=prefix)
@@ -236,7 +236,7 @@ def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit
         '}'
     ])
 
-    layer_part = 'kpu_layer_argument_t ' + prefix + 'la[] __attribute__((aligned(128))) = {\n' + ',\n'.join([
+    layer_part = 'static kpu_layer_argument_t ' + prefix + 'la[] __attribute__((aligned(128))) = {\n' + ',\n'.join([
         gen_layer_code(layer, idx)
         for layer, idx in zip(structs, range(len(structs)))
     ]) + '};'
