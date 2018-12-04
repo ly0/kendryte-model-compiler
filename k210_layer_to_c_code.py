@@ -219,7 +219,7 @@ def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit
 
     header_part = '#include "kpu.h"'
     footer_part = '\n'.join([
-        'kpu_task_t* kpu_task_' + prefix + 'init(kpu_task_t* task){',
+        'kpu_task_t* kpu_task_' + prefix + '_init(kpu_task_t* task){',
         ' \n'.join([
             ' {prefix}la[{idx}].kernel_pool_type_cfg.data.bwsx_base_addr = (uint64_t)&{prefix}bwsx_base_addr_{idx};\n'
             ' {prefix}la[{idx}].kernel_calc_type_cfg.data.active_addr = (uint64_t)&{prefix}active_addr_{idx};\n'
@@ -256,7 +256,7 @@ def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit
         for layer, idx in zip(structs, range(len(structs)))
     ]
 
-    return '\n\n'.join([
+    c_file = '\n\n'.join([
         header_part,
         '\n'.join(act_part),
         '\n'.join(bn_part),
@@ -264,3 +264,7 @@ def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit
         layer_part,
         footer_part,
     ])
+
+    h_file = 'kpu_task_t* kpu_task_' + prefix + '_init(kpu_task_t* task);\n'
+
+    return [c_file, h_file]

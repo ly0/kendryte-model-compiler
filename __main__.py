@@ -154,7 +154,7 @@ def main():
     parser.add_argument('--image_w', type=int, default=320)
     parser.add_argument('--image_h', type=int, default=240)
     parser.add_argument('--eight_bit_mode', type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument('--output_path', default='build/gencode_output.c')
+    parser.add_argument('--output_path', default='build/gencode_output')
     parser.add_argument('--output_bin_name', default='build/model.bin')
     parser.add_argument('--prefix', default='')
 
@@ -182,10 +182,13 @@ def main():
     eight_bit_mode = args.eight_bit_mode
     output_path = args.output_path
     output_bin_name = args.output_bin_name
-    prefix = args.prefix
+    prefix =  args.prefix if len(args.prefix)>0 else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
 
     if ':' not in dataset_input_name:
         dataset_input_name = dataset_input_name + ':0'
+
+    if output_path.endswith('.c'):
+        output_path = output_path[:-2]
 
     if tensorboard_mode:
         load_graph(pb_path, None, None)
@@ -225,11 +228,17 @@ def main():
         input_max=input_max,
         prefix=prefix
     )
+    c_file, h_file = output_code
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'w') as of:
-        of.write(output_code)
-    print('generate c code finish')
+
+    with open(output_path+'.c', 'w') as of:
+        of.write(c_file)
+    print('generate {} finish'.format(output_path+'.c'))
+
+    with open(output_path+'.h', 'w') as of:
+        of.write(h_file)
+    print('generate {} finish'.format(output_path+'.h'))
 
     if output_bin is not None:
         os.makedirs(os.path.dirname(output_bin_name), exist_ok=True)
