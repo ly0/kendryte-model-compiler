@@ -257,19 +257,23 @@ class K210BN:
 
 class K210Act:
     def __init__(self, min_y, max_y, ty, eight_bit_mode, tensor_info=None):
-        self.ty = ty
+        if isinstance(ty, list) or isinstance(ty, tuple):
+            self.ty=ty[0]
+            self.leaky_mul=ty[1]
+        else:
+            self.ty = ty
         self.eight_bit_mode = eight_bit_mode
         self.min_y = min_y
         self.max_y = max_y
         self.tensor_info = tensor_info or dict()
 
     @staticmethod
-    def leaky_relu(x):
-        return x if x >= 0 else 0.1 * x
+    def leaky_relu(x, v_mul):
+        return x if x >= 0 else x * v_mul
 
     @staticmethod
-    def leaky_relu_inverse(y):
-        return y if y >= 0 else 10 * y
+    def leaky_relu_inverse(y, v_mul):
+        return y if y >= 0 else y / v_mul
 
     @staticmethod
     def relu_inverse(y):
@@ -280,14 +284,14 @@ class K210Act:
         return y
 
     @staticmethod
-    def leaky_table(min_y, max_y):
+    def leaky_table(min_y, max_y, v_mul):
         range_y = max_y - min_y
         y_table = [min_y + i * range_y / 15 for i in range(15)]
         y_table.append(max_y)
         if 0 not in y_table:
             y_table.append(0)
         y_table = sorted(y_table)
-        x_table = [K210Act.leaky_relu_inverse(it) for it in y_table]
+        x_table = [K210Act.leaky_relu_inverse(it, v_mul) for it in y_table]
         dydx = [(y_table[i + 1] - y_table[i]) / (x_table[i + 1] - x_table[i]) for i in range(len(y_table) - 1)]
         return zip(x_table, y_table, dydx)
 
@@ -359,7 +363,7 @@ class K210Act:
     def to_k210(self, post_scale):
         act_tab = None
         if self.ty == 'leaky':
-            act_tab = list(K210Act.leaky_table(self.min_y, self.max_y))
+            act_tab = list(K210Act.leaky_table(self.min_y, self.max_y, self.leaky_mul))
         elif self.ty == 'Relu':
             act_tab = list(K210Act.relu_table(self.min_y, self.max_y))
         elif self.ty == 'Relu6':

@@ -58,7 +58,7 @@ class LayerConvolutional(LayerBase):
         activation = None
         bias_add = None
         bn_add, bn_sub, bn_div, bn_mul = None, None, None, None
-        leaky_reul_max = None
+        leaky_reul_mul = None
 
         if self.type_match(info, ['Add', 'Conv2D']):
             bias_add, conv2d = info
@@ -132,7 +132,11 @@ class LayerConvolutional(LayerBase):
         self.config['filters'] = int(conv2d.shape[3])
 
         if isinstance(activation, list):
-            self.config['activation'] = activation[0]
+            if activation[0] == 'leaky':
+                leaky_mul = sess.run(leaky_reul_mul.op.inputs[0], dataset)
+                self.config['activation'] = ['leaky', leaky_mul]
+            else:
+                self.config['activation'] = activation[0]
             self.tensor_activation = activation[1]
         elif activation is not None:
             assert (isinstance(activation, tf.Tensor))
@@ -204,6 +208,7 @@ class LayerDepthwiseConvolutional(LayerBase):
         self.batch_normalize_epsilon = 0
         bias_add = None
         batch_norm = None
+        leaky_reul_mul = None
         if self.type_match(info, ['Relu', 'FusedBatchNorm', 'BiasAdd', 'DepthwiseConv2dNative']):
             activation, batch_norm, bias_add, dwconv = info
         elif self.type_match(info, ['Relu', 'BiasAdd', 'DepthwiseConv2dNative']):
@@ -245,7 +250,11 @@ class LayerDepthwiseConvolutional(LayerBase):
         self.config['pad'] = 1 if dwconv.op.get_attr('padding') != 'SAME' else 0
 
         if isinstance(activation, list):
-            self.config['activation'] = activation[0]
+            if activation[0] == 'leaky':
+                leaky_mul = sess.run(leaky_reul_mul.op.inputs[0], dataset)
+                self.config['activation'] = ['leaky', leaky_mul]
+            else:
+                self.config['activation'] = activation[0]
             self.tensor_activation = activation[1]
         elif activation is not None:
             assert (isinstance(activation, tf.Tensor))
