@@ -203,7 +203,7 @@ def gen_act_code(dlayer, idx, prefix):
 def gen_weights_code(dlayer, idx, eight_bit_mode, prefix):
     weights = dlayer[0]['kernel_load_cfg']['para_start_addr']
     weights_data = ', '.join([
-        ('\n' if i % 64 == 0 else '') +
+        ('\n ' if i % 64 == 0 else '') +
         tools.signed_to_hex(item, 8 if eight_bit_mode else 16)
         for item, i in zip(weights, range(len(weights)))
     ])
