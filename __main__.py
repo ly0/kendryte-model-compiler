@@ -16,6 +16,7 @@
 
 import argparse
 import os
+import sys
 import tempfile
 
 import tensorflow as tf
@@ -76,33 +77,8 @@ def overwride_is_training(dataset):
     return dataset
 
 
-def box_image(im_path, new_w, new_h):
-    from PIL import Image
-    orig = Image.open(im_path)
-    w, h = orig.size
-    w_scale = float(new_w) / w
-    h_scale = float(new_h) / h
-
-    n_w = new_w
-    n_h = new_h
-    if w_scale < h_scale:
-        n_h = int(h * w_scale)
-    else:
-        n_w = int(w * h_scale)
-
-    ch_size = {'RGB': 3}.get(orig.mode, 1)
-    resized = np.array(orig.resize([n_w, n_h]), dtype='float32') / 255.0
-    resized = resized.reshape([*resized.shape, ch_size][:3])
-
-    box_im = np.ones([new_h, new_w, ch_size], dtype='float32') * 0.5
-    fill_y = (new_h - n_h) >> 1
-    fill_x = (new_w - n_w) >> 1
-    box_im[fill_y:fill_y + n_h, fill_x:fill_x + n_w, :] = resized
-
-    return box_im, resized
-
-
-def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0, input_max=1, prefix='', layer_start_idx=0):
+def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0,
+            input_max=1, prefix='', layer_start_idx=0):
     with tf.Session() as sess:
         converter = tensor_head_to_tensor_list.PbConverter(tensor_output, tensor_input)
         converter.convert()
@@ -150,15 +126,17 @@ def main():
     parser.add_argument('--tensor_input_min', type=float, default=0)
     parser.add_argument('--tensor_input_max', type=float, default=1)
     parser.add_argument('--tensor_input_minmax_auto', type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument('--dataset_input_name', default='input:0')
-    parser.add_argument('--dataset_pic_path', default='dataset/yolo')
-    parser.add_argument('--image_w', type=int, default=320)
-    parser.add_argument('--image_h', type=int, default=240)
     parser.add_argument('--eight_bit_mode', type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument('--output_path', default='build/gencode_output')
     parser.add_argument('--output_bin_name', default='build/model.bin')
     parser.add_argument('--prefix', default='')
     parser.add_argument('--layer_start_idx', type=int, default=0)
+
+    parser.add_argument('--dataset_loader', default='img_loader')
+    parser.add_argument('--dataset_input_name', default='input:0')
+    parser.add_argument('--dataset_pic_path', default='dataset/yolo')
+    parser.add_argument('--image_w', type=int, default=320)
+    parser.add_argument('--image_h', type=int, default=240)
 
     # Deprecated
     parser.add_argument('--tensor_head_name', default=None)
@@ -177,15 +155,19 @@ def main():
     input_min = args.tensor_input_min
     input_max = args.tensor_input_max
     input_minmax_auto = args.tensor_input_minmax_auto
-    dataset_input_name = args.dataset_input_name
-    dataset_pic_path = args.dataset_pic_path
-    image_w = args.image_w
-    image_h = args.image_h
     eight_bit_mode = args.eight_bit_mode
     output_path = args.output_path
     output_bin_name = args.output_bin_name
-    prefix =  args.prefix if len(args.prefix)>0 else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
+    prefix = args.prefix if len(args.prefix) > 0 \
+        else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
+
     layer_start_idx = args.layer_start_idx
+
+    dataset_input_name = args.dataset_input_name
+    dataset_pic_path = args.dataset_pic_path  # used in dataset loader
+    image_w = args.image_w  # used in dataset loader
+    image_h = args.image_h  # used in dataset loader
+    dataset_loader = args.dataset_loader
 
     if ':' not in dataset_input_name:
         dataset_input_name = dataset_input_name + ':0'
@@ -203,22 +185,16 @@ def main():
         return
 
     tensor_output, tensor_input = load_graph(pb_path, tensor_output_name, tensor_input_name)
-    if os.path.isdir(dataset_pic_path):
-        import random
-        all_files = os.listdir(dataset_pic_path)
-        if len(all_files) > 128:
-            print('[warning] you have too many dataset, may slow down this process. force sampled to 128 items of them.')
-            all_files = random.sample(all_files, 128)  # set maxmum dataset size
 
-        dataset_file_list = [
-            os.path.join(dataset_pic_path, f)
-            for f in all_files
-            if os.path.isfile(os.path.join(dataset_pic_path, f))
-        ]
+    if os.path.isdir(dataset_loader):
+        loader_dir = dataset_loader
     else:
-        dataset_file_list = (dataset_pic_path,)
+        loader_dir = os.path.dirname(dataset_loader)
 
-    dataset_val = np.array([box_image(path, image_w, image_h)[0].tolist() for path in dataset_file_list])
+    sys.path.append(os.path.abspath(loader_dir))
+    loader = __import__('loader')
+    dataset_val = loader.load_dataset(args)
+
     dataset = {dataset_input_name: dataset_val}
     dataset = overwride_is_training(dataset)
 
@@ -236,13 +212,13 @@ def main():
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    with open(output_path+'.c', 'w') as of:
+    with open(output_path + '.c', 'w') as of:
         of.write(c_file)
-    print('generate {} finish'.format(output_path+'.c'))
+    print('generate {} finish'.format(output_path + '.c'))
 
-    with open(output_path+'.h', 'w') as of:
+    with open(output_path + '.h', 'w') as of:
         of.write(h_file)
-    print('generate {} finish'.format(output_path+'.h'))
+    print('generate {} finish'.format(output_path + '.h'))
 
     if output_bin is not None:
         os.makedirs(os.path.dirname(output_bin_name), exist_ok=True)
