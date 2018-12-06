@@ -322,7 +322,7 @@ class K210Act:
     @staticmethod
     def linear_table(min_y, max_y):
         range_y = max_y - min_y
-        y_table = [min_y + i * range_y / 14 for i in range(14)]
+        y_table = [min_y + i * range_y / 15 for i in range(15)]
         if 0 not in y_table:
             y_table.append(0)
         y_table.append(max_y)
