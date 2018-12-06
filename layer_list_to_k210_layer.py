@@ -689,7 +689,7 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
 
 
 def gen_k210_layers(layers: [tensor_list_to_layer_list.LayerBase], sess, dataset, range_from_batch,
-                    eight_bit_mode=False, input_min=0, input_max=1):
+                    eight_bit_mode=False, input_min=0, input_max=1, layer_start_idx=0):
     buffer = list(layers)
     buffer.reverse()
     kl_args_list = []
@@ -711,7 +711,7 @@ def gen_k210_layers(layers: [tensor_list_to_layer_list.LayerBase], sess, dataset
             input_min=last_min, input_max=last_max,
             eight_bit_mode=eight_bit_mode,
             range_from_batch=range_from_batch,
-            idx=len(kl_args_list)
+            idx=len(kl_args_list)+layer_start_idx
         )
         kl_args_list.append(cur_k210_arg)
 
