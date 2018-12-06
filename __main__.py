@@ -102,7 +102,7 @@ def box_image(im_path, new_w, new_h):
     return box_im, resized
 
 
-def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0, input_max=1, prefix=''):
+def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0, input_max=1, prefix='', layer_start_idx=0):
     with tf.Session() as sess:
         converter = tensor_head_to_tensor_list.PbConverter(tensor_output, tensor_input)
         converter.convert()
@@ -119,10 +119,11 @@ def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_mi
             range_from_batch=rfb,
             eight_bit_mode=eight_bit_mode,
             input_min=input_min,
-            input_max=input_max
+            input_max=input_max,
+            layer_start_idx=layer_start_idx
         )
 
-        output_code = k210_layer_to_c_code.gen_layer_list_code(k210_layers, eight_bit_mode, prefix)
+        output_code = k210_layer_to_c_code.gen_layer_list_code(k210_layers, eight_bit_mode, prefix, layer_start_idx)
         try:
             output_bin = k210_layer_to_bin.gen_layer_bin(k210_layers, eight_bit_mode)
         except Exception as e:
@@ -157,6 +158,7 @@ def main():
     parser.add_argument('--output_path', default='build/gencode_output')
     parser.add_argument('--output_bin_name', default='build/model.bin')
     parser.add_argument('--prefix', default='')
+    parser.add_argument('--layer_start_idx', type=int, default=0)
 
     # Deprecated
     parser.add_argument('--tensor_head_name', default=None)
@@ -183,6 +185,7 @@ def main():
     output_path = args.output_path
     output_bin_name = args.output_bin_name
     prefix =  args.prefix if len(args.prefix)>0 else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
+    layer_start_idx = args.layer_start_idx
 
     if ':' not in dataset_input_name:
         dataset_input_name = dataset_input_name + ':0'
@@ -226,7 +229,8 @@ def main():
         input_minmax_auto=input_minmax_auto,
         input_min=input_min,
         input_max=input_max,
-        prefix=prefix
+        prefix=prefix,
+        layer_start_idx=layer_start_idx
     )
     c_file, h_file = output_code
 

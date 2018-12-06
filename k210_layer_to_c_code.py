@@ -142,9 +142,9 @@ def gen_layer_struct(klayer: layer_list_to_k210_layer.K210Layer, idx: int):
     }, (output_scale, output_bias)
 
 
-def gen_layer_list_struct(klayers: [layer_list_to_k210_layer.K210Layer]):
+def gen_layer_list_struct(klayers: [layer_list_to_k210_layer.K210Layer], layer_start_idx):
     ret = [
-        gen_layer_struct(klayer, idx)
+        gen_layer_struct(klayer, idx+layer_start_idx)
         for klayer, idx in zip(klayers, range(len(klayers)))
     ]
     return ret
@@ -213,8 +213,8 @@ def gen_weights_code(dlayer, idx, eight_bit_mode, prefix):
                .format(idx=idx, data=weights_data, prefix=prefix)
 
 
-def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit_mode, prefix):
-    structs = gen_layer_list_struct(klayers)
+def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit_mode, prefix, layer_start_idx):
+    structs = gen_layer_list_struct(klayers, layer_start_idx)
     output_scale, output_bias = structs[-1][1]
 
     header_part = '#include "kpu.h"'
