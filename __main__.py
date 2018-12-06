@@ -77,7 +77,8 @@ def overwride_is_training(dataset):
     return dataset
 
 
-def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0, input_max=1, prefix='', layer_start_idx=0):
+def convert(tensor_output, tensor_input, dataset, eight_bit_mode=False, input_minmax_auto=False, input_min=0,
+            input_max=1, prefix='', layer_start_idx=0):
     with tf.Session() as sess:
         converter = tensor_head_to_tensor_list.PbConverter(tensor_output, tensor_input)
         converter.convert()
@@ -137,7 +138,6 @@ def main():
     parser.add_argument('--image_w', type=int, default=320)
     parser.add_argument('--image_h', type=int, default=240)
 
-
     # Deprecated
     parser.add_argument('--tensor_head_name', default=None)
 
@@ -158,7 +158,9 @@ def main():
     eight_bit_mode = args.eight_bit_mode
     output_path = args.output_path
     output_bin_name = args.output_bin_name
-    prefix =  args.prefix if len(args.prefix)>0 else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
+    prefix = args.prefix if len(args.prefix) > 0 \
+        else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
+
     layer_start_idx = args.layer_start_idx
 
     dataset_input_name = args.dataset_input_name
@@ -210,13 +212,13 @@ def main():
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    with open(output_path+'.c', 'w') as of:
+    with open(output_path + '.c', 'w') as of:
         of.write(c_file)
-    print('generate {} finish'.format(output_path+'.c'))
+    print('generate {} finish'.format(output_path + '.c'))
 
-    with open(output_path+'.h', 'w') as of:
+    with open(output_path + '.h', 'w') as of:
         of.write(h_file)
-    print('generate {} finish'.format(output_path+'.h'))
+    print('generate {} finish'.format(output_path + '.h'))
 
     if output_bin is not None:
         os.makedirs(os.path.dirname(output_bin_name), exist_ok=True)

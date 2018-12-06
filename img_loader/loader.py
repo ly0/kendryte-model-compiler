@@ -2,6 +2,7 @@ import os
 import numpy as np
 from PIL import Image
 
+
 def box_image(im_path, new_w, new_h):
     orig = Image.open(im_path)
     w, h = orig.size
@@ -26,12 +27,16 @@ def box_image(im_path, new_w, new_h):
 
     return box_im, resized
 
+
 def load_dataset(args):
     if os.path.isdir(args.dataset_pic_path):
         import random
         all_files = os.listdir(args.dataset_pic_path)
         if len(all_files) > 128:
-            print('[warning] you have too many dataset, may slow down this process. force sampled to 128 items of them.')
+            print(
+                '[warning] you have too many dataset, may slow down this process. '
+                'force sampled to 128 items of them.'
+            )
             all_files = random.sample(all_files, 128)  # set maxmum dataset size
 
         dataset_file_list = [
@@ -41,7 +46,6 @@ def load_dataset(args):
         ]
     else:
         dataset_file_list = (args.dataset_pic_path,)
-
 
     dataset_val = np.array([box_image(path, args.image_w, args.image_h)[0].tolist() for path in dataset_file_list])
     return dataset_val
