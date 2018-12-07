@@ -138,20 +138,12 @@ def main():
     parser.add_argument('--image_w', type=int, default=320)
     parser.add_argument('--image_h', type=int, default=240)
 
-    # Deprecated
-    parser.add_argument('--tensor_head_name', default=None)
-
     args = parser.parse_args()
-
-    if args.tensor_head_name is not None:
-        print(
-            '[warning]: --tensor_head_name is deprecated. please use --tensor_output_name instand'
-        )
 
     tensorboard_mode = args.tensorboard_mode
     pb_path = args.pb_path
     tensor_input_name = args.tensor_input_name
-    tensor_output_name = args.tensor_output_name or args.tensor_head_name
+    tensor_output_name = args.tensor_output_name
     input_min = args.tensor_input_min
     input_max = args.tensor_input_max
     input_minmax_auto = args.tensor_input_minmax_auto
