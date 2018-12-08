@@ -1,3 +1,5 @@
+import sys
+import os
 
 def signed_to_hex(value, width):
     return hex(int(round((1 << width) + value)) % (1 << width))
@@ -19,3 +21,17 @@ def min_max_to_scale_bias(minv, maxv):
     scale = (maxv - minv) / 255
     bias = minv
     return scale, bias
+
+def import_from_path(module_path):
+    module_dir = os.path.dirname(module_path)
+    module_name = os.path.basename(module_path)
+
+    if module_name.endswith('.py'):
+        module_name = module_name[:-3]
+
+    sys_path = sys.path
+    sys.path = [os.path.abspath(module_dir)] if module_dir else ['.']
+    loaded_module = __import__(module_name)
+    sys.path = sys_path
+
+    return loaded_module

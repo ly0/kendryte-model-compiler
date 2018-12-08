@@ -178,14 +178,9 @@ def main():
 
     tensor_output, tensor_input = load_graph(pb_path, tensor_output_name, tensor_input_name)
 
-    if os.path.isdir(dataset_loader):
-        loader_dir = dataset_loader
-    else:
-        loader_dir = os.path.dirname(dataset_loader)
+    dataset_loader_module = tools.import_from_path(dataset_loader)
 
-    sys.path.append(os.path.abspath(loader_dir))
-    loader = __import__('loader')
-    dataset_val = loader.load_dataset(args)
+    dataset_val = dataset_loader_module.load_dataset(args)
 
     dataset = {dataset_input_name: dataset_val}
     dataset = overwride_is_training(dataset)
