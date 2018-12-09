@@ -16,11 +16,9 @@
 
 import argparse
 import os
-import sys
 import tempfile
 
 import tensorflow as tf
-import numpy as np
 
 from tensorflow.python.platform import gfile
 
@@ -31,8 +29,6 @@ import layer_list_to_k210_layer
 import k210_layer_to_c_code
 import k210_layer_to_bin
 import tools
-
-current_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 def load_graph(pb_file_path, tensor_output_name, tensor_input_name):
@@ -59,7 +55,7 @@ def load_graph(pb_file_path, tensor_output_name, tensor_input_name):
     return None
 
 
-def overwride_is_training_name(dataset, name):
+def overwrite_is_training_name(dataset, name):
     with tf.Session() as sess:
         try:
             is_training = sess.graph.get_operation_by_name(name)
@@ -71,9 +67,9 @@ def overwride_is_training_name(dataset, name):
     return dataset
 
 
-def overwride_is_training(dataset):
-    dataset = overwride_is_training_name(dataset, 'is_training')
-    dataset = overwride_is_training_name(dataset, 'phase_train')
+def overwrite_is_training(dataset):
+    dataset = overwrite_is_training_name(dataset, 'is_training')
+    dataset = overwrite_is_training_name(dataset, 'phase_train')
     return dataset
 
 
@@ -132,7 +128,7 @@ def main():
     parser.add_argument('--prefix', default='')
     parser.add_argument('--layer_start_idx', type=int, default=0)
 
-    parser.add_argument('--dataset_loader', default='img_loader')
+    parser.add_argument('--dataset_loader', default='dataset_loader/img_0_1.py')
     parser.add_argument('--dataset_input_name', default='input:0')
     parser.add_argument('--dataset_pic_path', default='dataset/yolo')
     parser.add_argument('--image_w', type=int, default=320)
@@ -183,7 +179,7 @@ def main():
     dataset_val = dataset_loader_module.load_dataset(args)
 
     dataset = {dataset_input_name: dataset_val}
-    dataset = overwride_is_training(dataset)
+    dataset = overwrite_is_training(dataset)
 
     (output_code, output_bin) = convert(
         tensor_output, tensor_input,
