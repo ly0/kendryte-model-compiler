@@ -14,7 +14,6 @@
  * limitations under the License.
  '''
 import k210_layer
-import layer_list_to_k210_layer
 import math
 from struct import pack
 

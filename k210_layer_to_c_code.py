@@ -14,11 +14,8 @@
  * limitations under the License.
  '''
 import k210_layer
-import layer_list_to_k210_layer
-import numpy as np
 import math
 
-import range_from_batch
 import tools
 
 default_conv_arg = None

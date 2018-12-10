@@ -23,9 +23,7 @@ import tensorflow as tf
 from tensorflow.python.platform import gfile
 
 import range_from_batch
-import tensor_head_to_tensor_list
-import tensor_list_to_layer_list
-import layer_list_to_k210_layer
+from model_loader.pb import layer_list_to_k210_layer, tensor_list_to_layer_list, tensor_head_to_tensor_list
 import k210_layer_to_c_code
 import k210_layer_to_bin
 import tools
