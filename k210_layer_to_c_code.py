@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  '''
-
+import k210_layer
 import layer_list_to_k210_layer
 import numpy as np
 import math
@@ -37,7 +37,7 @@ def q(value, ranges, mean):
 
 
 
-def gen_layer_struct(klayer: layer_list_to_k210_layer.K210Layer, idx: int):
+def gen_layer_struct(klayer: k210_layer.K210Layer, idx: int):
     reserved = 0
     set_to_zero = 0
     img_ram_size = 2 * 1024 * 1024
@@ -142,7 +142,7 @@ def gen_layer_struct(klayer: layer_list_to_k210_layer.K210Layer, idx: int):
     }, (output_scale, output_bias)
 
 
-def gen_layer_list_struct(klayers: [layer_list_to_k210_layer.K210Layer], layer_start_idx):
+def gen_layer_list_struct(klayers: [k210_layer.K210Layer], layer_start_idx):
     ret = [
         gen_layer_struct(klayer, idx+layer_start_idx)
         for klayer, idx in zip(klayers, range(len(klayers)))
@@ -213,7 +213,7 @@ def gen_weights_code(dlayer, idx, eight_bit_mode, prefix):
                .format(idx=idx, data=weights_data, prefix=prefix)
 
 
-def gen_layer_list_code(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit_mode, prefix, layer_start_idx):
+def gen_layer_list_code(klayers: [k210_layer.K210Layer], eight_bit_mode, prefix, layer_start_idx):
     structs = gen_layer_list_struct(klayers, layer_start_idx)
     output_scale, output_bias = structs[-1][1]
 

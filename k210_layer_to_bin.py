@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  '''
-
+import k210_layer
 import layer_list_to_k210_layer
 import math
 from struct import pack
@@ -111,7 +111,7 @@ def min_max_to_scale_bias(minv, maxv):
     return scale, bias
 
 
-def gen_layer_struct(klayer: layer_list_to_k210_layer.K210Layer, idx: int):
+def gen_layer_struct(klayer: k210_layer.K210Layer, idx: int):
     reserved = 0
     set_to_zero = 0
     img_ram_size = 2 * 1024 * 1024
@@ -223,7 +223,7 @@ def gen_layer_struct(klayer: layer_list_to_k210_layer.K210Layer, idx: int):
     }, (output_scale, output_bias)
 
 
-def gen_layer_list_struct(klayers: [layer_list_to_k210_layer.K210Layer]):
+def gen_layer_list_struct(klayers: [k210_layer.K210Layer]):
     ret = [
         gen_layer_struct(klayer, idx)
         for klayer, idx in zip(klayers, range(len(klayers)))
@@ -299,7 +299,7 @@ class layer_config_struct():
         self.weights_arg = b''
 
 
-def gen_layer_bin(klayers: [layer_list_to_k210_layer.K210Layer], eight_bit_mode):
+def gen_layer_bin(klayers: [k210_layer.K210Layer], eight_bit_mode):
     structs = gen_layer_list_struct(klayers)
     output_scale, output_bias = structs[-1][1]
 
