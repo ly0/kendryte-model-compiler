@@ -15,8 +15,8 @@
  '''
 
 import k210_layer
-from model_loader.pb import tensor_list_to_layer_list
 import numpy as np
+from . import tensor_list_to_layer_list
 
 
 def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eight_bit_mode, range_from_batch, idx):
