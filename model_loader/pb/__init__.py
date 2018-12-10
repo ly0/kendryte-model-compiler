@@ -9,23 +9,23 @@ from . import layer_list_to_k210_layer
 
 
 def load_graph(pb_file_path, tensor_output_name, tensor_input_name):
-    if pb_file_path.endswith('pb'):
-        with tf.Session() as persisted_sess:
-            with gfile.GFile(pb_file_path, 'rb') as f:
-                graph_def = tf.GraphDef()
-                graph_def.ParseFromString(f.read())
-                persisted_sess.graph.as_default()
-                tf.import_graph_def(graph_def, name='')
+    if not pb_file_path.endswith('.pb'):
+        raise ValueError('{} should endwith *.pb'.format(pb_file_path))
 
-        output_tensor, input_tensor = None, None
-        if tensor_output_name is not None:
-            output_tensor = persisted_sess.graph._nodes_by_name[tensor_output_name].outputs[0]
-        if tensor_input_name is not None:
-            input_tensor = persisted_sess.graph._nodes_by_name[tensor_input_name].outputs[0]
+    with tf.Session() as persisted_sess:
+        with gfile.GFile(pb_file_path, 'rb') as f:
+            graph_def = tf.GraphDef()
+            graph_def.ParseFromString(f.read())
+            persisted_sess.graph.as_default()
+            tf.import_graph_def(graph_def, name='')
 
-        return output_tensor, input_tensor
+    output_tensor, input_tensor = None, None
+    if tensor_output_name is not None:
+        output_tensor = persisted_sess.graph._nodes_by_name[tensor_output_name].outputs[0]
+    if tensor_input_name is not None:
+        input_tensor = persisted_sess.graph._nodes_by_name[tensor_input_name].outputs[0]
 
-    return None
+    return output_tensor, input_tensor
 
 
 def load_model(dataset, range_from_batch, args):
