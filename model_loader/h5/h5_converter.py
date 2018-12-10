@@ -14,12 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  '''
- 
-import keras.models
-import tensorflow as tf
+
 import tempfile
-from keras import backend as K
+import tensorflow as tf
 from tensorflow.python.framework import graph_io
+import keras.models
+from keras import backend as K
 
 
 def freeze_session(session, keep_var_names=None, output_names=None, clear_devices=True):
@@ -40,7 +40,7 @@ def freeze_session(session, keep_var_names=None, output_names=None, clear_device
     from tensorflow.python.framework.graph_util import convert_variables_to_constants
     graph = session.graph
     with graph.as_default():
-        freeze_var_names = None #list(set(v.op.name for v in tf.global_variables()).difference(keep_var_names or []))
+        freeze_var_names = None  # list(set(v.op.name for v in tf.global_variables()).difference(keep_var_names or []))
         output_names = output_names or []
         # output_names += [v.op.name for v in tf.global_variables()]
         input_graph_def = graph.as_graph_def()

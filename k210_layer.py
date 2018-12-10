@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
  * Copyright 2018 Canaan Inc.
  *
@@ -15,45 +16,8 @@
  '''
 
 import math
-import tensor_list_to_layer_list
 import numpy as np
 import tools
-
-
-def hotfix_magic_1(eight_bit_mode, scale_max):
-    # 36bit before and after bn
-    # bn_add range is 32bit
-    return 1 / max(scale_max, 1 / (1 << 32))
-
-
-def log_next_pow_of_2(value):
-    ret = 0
-    while value > 1 or value <= -1:
-        value = value / 2
-        ret = ret + 1
-
-    return ret, value
-
-def pow_next_log_of_2_no_round(value, bound_shift, shift_max_shift=4):
-    mul, shift = np.frexp(np.abs(value))
-    ret = bound_shift - 1 - shift
-    mul = np.sign(value) * mul * np.power(2, bound_shift - 1)
-    return ret, mul
-
-def pow_next_log_of_2(value, bound_shift, shift_max_shift=4):
-    ret = 0
-    shift_max = 1 << shift_max_shift
-    while value >= -(1 << (bound_shift - 2)) and value < (1 << (bound_shift - 2)) \
-            and value != 0 and ret < (shift_max - 1):
-        value = value * 2
-        ret = ret + 1
-
-    return ret, value
-
-
-def signed_to_hex(value, width):
-    return hex(int((1 << width) + value) % (1 << width))
-
 
 class K210Conv:
     def __init__(self, weights, depth_wise_layer, eight_bit_mode, xy_shape, xw_minmax, tensor_info):
@@ -178,8 +142,8 @@ class K210Conv:
         bx_div_sx = bias_x / scale_x
         bw_div_sw = bias_w / scale_w
 
-        shr_x, arg_x = pow_next_log_of_2(bw_div_sw, 24)
-        shr_w, arg_w = pow_next_log_of_2(bx_div_sx, 24)
+        shr_x, arg_x = tools.pow_next_log_of_2(bw_div_sw, 24)
+        shr_w, arg_w = tools.pow_next_log_of_2(bx_div_sx, 24)
         arg_add = kernel_size * kernel_size * bw_div_sw * bx_div_sx
         pad_value = -bx_div_sx
         swsx = scale_w * scale_x
@@ -225,7 +189,11 @@ class K210BN:
     @staticmethod
     def get_bn(scale, bias):
         norm_shift, norm_mul = 15, scale
-        return {'norm_mul': signed_to_hex(norm_mul, 24), 'norm_add': signed_to_hex(bias, 32), 'norm_shift': norm_shift}
+        return {
+            'norm_mul': tools.signed_to_hex(norm_mul, 24),
+            'norm_add': tools.signed_to_hex(bias, 32),
+            'norm_shift': norm_shift
+        }
 
     def to_k210(self, swsx=1):
         rsqrt_var = 1.0 / np.sqrt(self.var + self.epsilon)
@@ -233,11 +201,12 @@ class K210BN:
         scale = self.gamma * rsqrt_var
         bias = self.beta - self.gamma * self.mean * rsqrt_var
 
+        # todo: rewrite this, make max_abs mul is +-(1<<N)
         bmax = max(abs(np.min(scale)), abs(np.max(scale)))
         brange = bmax
         sb = brange / 255
         swsxsb = swsx * sb
-        out_shift, out_mul = pow_next_log_of_2_no_round(swsxsb, 15)
+        out_shift, out_mul = tools.pow_next_log_of_2_no_round(swsxsb, 15)
 
         bn_shift = 15
         act_shift = out_shift - bn_shift
@@ -258,8 +227,8 @@ class K210BN:
 class K210Act:
     def __init__(self, min_y, max_y, ty, eight_bit_mode, tensor_info=None):
         if isinstance(ty, list) or isinstance(ty, tuple):
-            self.ty=ty[0]
-            self.leaky_mul=ty[1]
+            self.ty = ty[0]
+            self.leaky_mul = ty[1]
         else:
             self.ty = ty
         self.eight_bit_mode = eight_bit_mode
@@ -409,12 +378,68 @@ class K210Pool:
 
 
 class K210Layer:
-    def __init__(self, eight_bit_mode):
-        self.conv = None
-        self.bn = None
-        self.act = None
-        self.pool = None
-        self.eight_bit_mode = eight_bit_mode
+    def __init__(self, iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma_beta_epsilon, act_type,
+                 pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None, idx=-1):
+        input_min, input_max, weights_min, weights_max, output_min, output_max = iwo_minmax
+        input_shape, conv_shape, output_shape = ico_shapes
+        conv_weights, conv_isdw = conv_weights_isdw
+        conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info, *_ = [
+            *list(cbap_tensor_info or []), dict(), dict(), dict(), dict()
+        ]
+
+        output_name = pool_tensor_info.get('name') or act_tensor_info.get('name', 'noname')
+        input_scale, input_bias = tools.min_max_to_scale_bias(input_min, input_max)
+        output_scale, output_bias = tools.min_max_to_scale_bias(output_min, output_max)
+        layer_shape_trans = [
+            int(input_shape[1]), int(input_shape[2]), int(input_shape[3]),
+            int(output_shape[1]), int(output_shape[2]), int(output_shape[3])
+        ]
+        print(
+            '[layer {}]: {}'.format(idx, output_name),
+            '           shape(WHC): {}x{}x{} ==> {}x{}x{}'.format(*layer_shape_trans),
+            '           scale,bias: ({},{}) ==> ({},{})'.format(input_scale, input_bias, output_scale, output_bias),
+            sep='\n'
+        )
+
+        self.conv = K210Conv(
+            conv_weights,
+            conv_isdw,
+            eight_bit_mode, [input_shape, conv_shape],
+            [input_min, input_max, weights_min, weights_max],
+            tensor_info=conv_tensor_info
+        )
+
+        bn_mean, bn_var, bn_gamma, bn_beta, bn_epsilon = bn_mean_var_gamma_beta_epsilon
+        self.bn = K210BN(
+            bn_mean,
+            bn_var,
+            bn_gamma,
+            bn_beta,
+            bn_epsilon,
+            eight_bit_mode,
+            tensor_info=bn_tensor_info
+        )
+
+        self.act = K210Act(output_min, output_max, act_type,
+                           eight_bit_mode=eight_bit_mode, tensor_info=act_tensor_info)
+
+        if pool_type_size_stride is not None:
+            pool_type, pool_size, pool_stride = pool_type_size_stride
+            if pool_size == 2 and conv_shape[3] % 2 != 0:
+                raise ValueError(
+                    "at {} unsupport padding mode SAME of pooling" \
+                        .format(pool_tensor_info.get('name', 'noname'))
+                )
+
+            if conv_isdw and pool_size != 1:
+                raise ValueError(
+                    'not supported DepthwiseConv2d({}) followed by pooling witch pool_size is not 1.' \
+                        .format(pool_tensor_info.get('name', 'noname'))
+                )
+
+            self.pool = K210Pool(pool_type, pool_size, pool_stride, pool_tensor_info)
+        else:
+            self.pool = None
 
     @staticmethod
     def batch(iter, n=1):
@@ -457,144 +482,8 @@ class K210Layer:
         return locals()
 
 
-def make_k210_layer(iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma_beta_epsilon, act_type,
-                    pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None, idx=-1):
-    input_min, input_max, weights_min, weights_max, output_min, output_max = iwo_minmax
-    input_shape, conv_shape, output_shape = ico_shapes
-    conv_weights, conv_isdw = conv_weights_isdw
-    conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info, *_ = [
-        *list(cbap_tensor_info or []), dict(), dict(), dict(), dict()
-    ]
-
-    output_name = pool_tensor_info.get('name') or act_tensor_info.get('name', 'noname')
-    output_scale, output_bias = tools.min_max_to_scale_bias(output_min, output_max)
-    layer_shape_trans = [
-        int(input_shape[1]), int(input_shape[2]), int(input_shape[3]),
-        int(output_shape[1]), int(output_shape[2]), int(output_shape[3])
-    ]
-    print(
-        "[layer {}]".format(idx), output_name,
-        'shape(WHC): {}x{}x{} => {}x{}x{}'.format(*layer_shape_trans),
-        'scale/bias:', output_scale, output_bias
-    )
-
-    ret = K210Layer(eight_bit_mode)
-    ret.conv = K210Conv(
-        conv_weights,
-        conv_isdw,
-        eight_bit_mode, [input_shape, conv_shape],
-        [input_min, input_max, weights_min, weights_max],
-        tensor_info=conv_tensor_info
-    )
-
-    bn_mean, bn_var, bn_gamma, bn_beta, bn_epsilon = bn_mean_var_gamma_beta_epsilon
-    ret.bn = K210BN(
-        bn_mean,
-        bn_var,
-        bn_gamma,
-        bn_beta,
-        bn_epsilon,
-        eight_bit_mode,
-        tensor_info=bn_tensor_info
-    )
-
-    ret.act = K210Act(output_min, output_max, act_type,
-                      eight_bit_mode=eight_bit_mode, tensor_info=act_tensor_info)
-
-    if pool_type_size_stride is not None:
-        pool_type, pool_size, pool_stride = pool_type_size_stride
-        if pool_size == 2 and conv_shape[3] % 2 != 0:
-            raise ValueError(
-                "at {} unsupport padding mode SAME of pooling" \
-                    .format(pool_tensor_info.get('name', 'noname'))
-            )
-
-        if conv_isdw and pool_size != 1:
-            raise ValueError(
-                'not supported DepthwiseConv2d({}) followed by pooling witch pool_size is not 1.' \
-                    .format(pool_tensor_info.get('name', 'noname'))
-            )
-
-        ret.pool = K210Pool(pool_type, pool_size, pool_stride, pool_tensor_info)
-
-    return ret
-
-
-def make_k210_layer_from_tensor(sess, dataset, buffer, input_min, input_max, eight_bit_mode, range_from_batch, idx):
-    pool_tensor_info = dict()
-    pool_type_size_stride = None  # bypass pool
-
-    if isinstance(buffer[-1], tensor_list_to_layer_list.LayerConvolutional) \
-            or isinstance(buffer[-1], tensor_list_to_layer_list.LayerDepthwiseConvolutional):
-        conv_layer = buffer.pop()
-
-        input_shape = list(sess.run(conv_layer.tensor_conv_x, dataset).shape)
-        conved_shape = list(sess.run(conv_layer.tensor_conv_y, dataset).shape)
-
-        if conv_layer.tensor_conv_x.op.type == 'SpaceToBatchND':
-            print('[warning] found SpaceToBatchND fix input_shape/')
-            input_shape[1] = input_shape[1]-2
-            input_shape[2] = input_shape[2]-2
-
-        weights_min, weights_max, _ = range_from_batch(sess, conv_layer.tensor_conv_w, dataset, is_weights=True)
-        conv_weights = conv_layer.weights
-        conv_isdw = isinstance(conv_layer, tensor_list_to_layer_list.LayerDepthwiseConvolutional)
-        conv_tensor_info = {'name': conv_layer.tensor_conv_y.name}
-
-        if int(conv_layer.config['batch_normalize']) == 1:
-            bn_mean_var_gamma_beta_epsilon = [
-                conv_layer.batch_normalize_moving_mean,
-                conv_layer.batch_normalize_moving_variance,
-                conv_layer.batch_normalize_gamma,
-                conv_layer.batch_normalize_beta,
-                conv_layer.batch_normalize_epsilon
-            ]
-            bn_tensor_info = {'name': 'bn'}
-        else:
-            bias_shape = conv_layer.bias.shape
-            bn_mean_var_gamma_beta_epsilon = [
-                0, 1, np.ones(bias_shape), conv_layer.bias, 0
-            ]
-            bn_tensor_info = {'name': 'bn'}
-
-        tensor_act = conv_layer.tensor_activation
-        act_min_y, act_max_y, _ = range_from_batch(sess, tensor_act, dataset)
-        act_type = conv_layer.config['activation']
-        act_tensor_info = {'name': tensor_act.name if tensor_act is not None else 'default_linear'}
-        output_shape = tensor_act.shape
-    else:
-        raise ValueError('unsupported type seq: ', *[type(l) for l in buffer])
-
-    if len(buffer) > 0 and isinstance(buffer[-1], tensor_list_to_layer_list.LayerPool):
-        pool_layer = buffer.pop()
-        assert (isinstance(pool_layer, tensor_list_to_layer_list.LayerPool))
-        pool_size = pool_layer.config['size']
-        pool_stride = pool_layer.config['stride']
-        pool_type = pool_layer.tensor_pool.op.type
-
-        if pool_size == 2 and pool_layer.tensor_pool.op.inputs[0].shape[3] % 2 != 0:
-            if pool_layer.tensor_pool.op.get_attr('padding') == b'SAME':
-                raise ValueError("at {} unsupport padding mode SAME of pooling with size == 2" \
-                                 .format(pool_layer.tensor_pool.name))
-
-        pool_type_size_stride = [pool_type, pool_size, pool_stride]
-        pool_tensor_info = {'name': pool_layer.tensor_pool.op.name}
-
-    return {
-        'iwo_minmax':[input_min, input_max, weights_min, weights_max, act_min_y, act_max_y],
-        'ico_shapes':[input_shape, conved_shape, output_shape],
-        'conv_weights_isdw':[conv_weights, conv_isdw],
-        'bn_mean_var_gamma_beta_epsilon':bn_mean_var_gamma_beta_epsilon,
-        'act_type':act_type,
-        'pool_type_size_stride':pool_type_size_stride,
-        'eight_bit_mode':eight_bit_mode,
-        'cbap_tensor_info':[conv_tensor_info, bn_tensor_info, act_tensor_info, pool_tensor_info],
-        'idx':idx
-    }
-
-
-def k210_layer_post_fix(kl_args_list: [K210Layer]):
-    def fix_dw_with_strde2(kl_args_list: [K210Layer]):
+def k210_layer_post_fix(kl_args_list):
+    def fix_dw_with_strde2(kl_args_list):
         def expand_wh(shape_):
             shape_1 = shape_[1] * 2
             shape_2 = shape_[2] * 2
@@ -609,10 +498,10 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
             kl_args_fixed = dict(kl_args)
 
             conv_kernel_size = int(conv_weights.shape[0])
-            conv_stride = int((int(input_shape[2])+1)/int(conv_shape[2]))
+            conv_stride = int((int(input_shape[2]) + 1) / int(conv_shape[2]))
 
             if lack_of_left_pooling:
-                if not conv_isdw and conv_kernel_size==1 and pool_type_size_stride is None:
+                if not conv_isdw and conv_kernel_size == 1 and pool_type_size_stride is None:
                     # fix in current layer
                     input_shape = expand_wh(input_shape)
                     conv_shape = expand_wh(conv_shape)
@@ -620,11 +509,11 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
                     kl_args_fixed['pool_type_size_stride'] = ['leftPool', 2, 2]
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
                 else:
-                    if not (conv_kernel_size==1 and pool_type_size_stride is None):
+                    if not (conv_kernel_size == 1 and pool_type_size_stride is None):
                         raise ValueError(
-                            'run fix_dw_with_strde2 failed. '+
-                            'can not delay left_pooling over current layer, '+
-                            'current layer conv_kernel_size:{}, pool_type_size_stride:{}'\
+                            'run fix_dw_with_strde2 failed. ' +
+                            'can not delay left_pooling over current layer, ' +
+                            'current layer conv_kernel_size:{}, pool_type_size_stride:{}' \
                             .format(conv_kernel_size, pool_type_size_stride)
                         )
 
@@ -633,7 +522,6 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
                     conv_shape = expand_wh(conv_shape)
                     output_shape = expand_wh(output_shape)
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
-
 
             if conv_stride == 2:
                 if not conv_isdw:
@@ -655,22 +543,20 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
                     output_shape = expand_wh(output_shape)
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
 
-
             ret.append(kl_args_fixed)
 
         if lack_of_left_pooling:
             raise ValueError('run fix_dw_with_strde2 failed. no more layers for fix.')
         return ret
 
-    def fix_wh_leas_than_4(kl_args_list: [K210Layer]):
+    def fix_wh_leas_than_4(kl_args_list):
         def force_pad_to_4(shape_):
-                return [shape_[0], 4, 4, shape_[3]]
+            return [shape_[0], 4, 4, shape_[3]]
 
         ret = []
         for kl_args in kl_args_list:
             input_shape, conv_shape, output_shape = kl_args['ico_shapes']
             kl_args_fixed = dict(kl_args)
-
 
             if input_shape[1] < 4 or conv_shape[1] < 4 or output_shape[1] < 4:
                 input_shape = force_pad_to_4(input_shape)
@@ -682,39 +568,6 @@ def k210_layer_post_fix(kl_args_list: [K210Layer]):
 
         return ret
 
-
     kl_args_list = fix_wh_leas_than_4(kl_args_list)
     kl_args_list = fix_dw_with_strde2(kl_args_list)
     return kl_args_list
-
-
-def gen_k210_layers(layers: [tensor_list_to_layer_list.LayerBase], sess, dataset, range_from_batch,
-                    eight_bit_mode=False, input_min=0, input_max=1, layer_start_idx=0):
-    buffer = list(layers)
-    buffer.reverse()
-    kl_args_list = []
-
-    net = buffer.pop()
-    assert (isinstance(net, tensor_list_to_layer_list.LayerNet))
-
-    while len(buffer) != 0:
-        if len(kl_args_list) > 0:
-            last_min = kl_args_list[-1]['iwo_minmax'][4]
-            last_max = kl_args_list[-1]['iwo_minmax'][5]
-        else:
-            last_min = input_min
-            last_max = input_max
-
-        cur_k210_arg = make_k210_layer_from_tensor(
-            sess=sess, dataset=dataset,
-            buffer=buffer,
-            input_min=last_min, input_max=last_max,
-            eight_bit_mode=eight_bit_mode,
-            range_from_batch=range_from_batch,
-            idx=len(kl_args_list)+layer_start_idx
-        )
-        kl_args_list.append(cur_k210_arg)
-
-    kl_args_fixed = k210_layer_post_fix(kl_args_list)
-    kl_list = [make_k210_layer(**kl_args) for kl_args in kl_args_fixed]
-    return kl_list
