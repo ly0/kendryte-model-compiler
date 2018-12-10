@@ -9,10 +9,6 @@ from . import layer_list_to_k210_layer
 
 
 def load_graph(pb_file_path, tensor_output_name, tensor_input_name):
-    if pb_file_path.endswith('h5'):
-        import h5_converter
-        pb_file_path = h5_converter.convert(pb_file_path)
-
     if pb_file_path.endswith('pb'):
         with tf.Session() as persisted_sess:
             with gfile.GFile(pb_file_path, 'rb') as f:
