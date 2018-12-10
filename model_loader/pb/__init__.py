@@ -3,9 +3,6 @@ import tempfile
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
-import range_from_batch
-import tools
-
 from . import tensor_list_to_layer_list
 from . import tensor_head_to_tensor_list
 from . import layer_list_to_k210_layer
@@ -35,7 +32,7 @@ def load_graph(pb_file_path, tensor_output_name, tensor_input_name):
     return None
 
 
-def load_model(dataset, args):
+def load_model(dataset, range_from_batch, args):
     if args.tensorboard_mode:
         load_graph(args.pb_path, None, None)
         graphs_path = tempfile.mkdtemp('graphs')
@@ -45,25 +42,23 @@ def load_model(dataset, args):
         subprocess.call(['tensorboard', '--logdir', graphs_path])
         exit(0)
 
-
     tensor_output, tensor_input = load_graph(args.pb_path, args.tensor_output_name, args.tensor_input_name)
     with tf.Session() as sess:
         converter = tensor_head_to_tensor_list.PbConverter(tensor_output, tensor_input)
         converter.convert()
         layers = tensor_list_to_layer_list.convert_to_layers(sess, dataset, converter.dst)
 
-        rfb = range_from_batch.RangeFromBatchMinMax()
+        input_min = args.tensor_input_min
+        input_max = args.tensor_input_max
         if args.tensor_input_minmax_auto:
-            input_min, input_max, = rfb(sess, tensor_input, dataset)
-            in_scale, in_bias = tools.min_max_to_scale_bias(input_min, input_max)
-            print('[layer input] scale/bias:', in_scale, in_bias)
+            input_min, input_max = range_from_batch(sess, tensor_input, dataset)
 
         k210_layers = layer_list_to_k210_layer.gen_k210_layers(
             layers, sess, dataset,
-            range_from_batch=rfb,
+            range_from_batch=range_from_batch,
             eight_bit_mode=args.eight_bit_mode,
-            input_min=args.tensor_input_min,
-            input_max=args.tensor_input_max,
+            input_min=input_min,
+            input_max=input_max,
             layer_start_idx=args.layer_start_idx
         )
 

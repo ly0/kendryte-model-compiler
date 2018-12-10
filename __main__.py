@@ -16,18 +16,13 @@
 
 import argparse
 import os
-import tempfile
 
 import tensorflow as tf
 
-from tensorflow.python.platform import gfile
-
-import range_from_batch
-from model_loader import pb
 import k210_layer_to_c_code
 import k210_layer_to_bin
+import range_from_batch
 import tools
-
 
 
 def overwrite_is_training_name(dataset, name):
@@ -48,17 +43,18 @@ def overwrite_is_training(dataset):
     return dataset
 
 
-def convert(model_loader, dataset, args):
-    k210_layers = model_loader.load_model(dataset, args)
-
-    output_code = k210_layer_to_c_code.gen_layer_list_code(k210_layers, args.eight_bit_mode, args.prefix, args.layer_start_idx)
-    try:
-        output_bin = k210_layer_to_bin.gen_layer_bin(k210_layers, args.eight_bit_mode)
-    except Exception as e:
-        print(e)
-        output_bin = None
-
-    return (output_code, output_bin)
+# def convert(model_loader, dataset, args):
+#     k210_layers = model_loader.load_model(dataset, args)
+#
+#     output_code = k210_layer_to_c_code.gen_layer_list_code(k210_layers, args.eight_bit_mode, args.prefix,
+#                                                            args.layer_start_idx)
+#     try:
+#         output_bin = k210_layer_to_bin.gen_layer_bin(k210_layers, args.eight_bit_mode)
+#     except Exception as e:
+#         print(e)
+#         output_bin = None
+#
+#     return (output_code, output_bin)
 
 
 def main():
@@ -86,7 +82,6 @@ def main():
     parser.add_argument('--tensor_input_max', type=float, default=1)
     parser.add_argument('--tensor_input_minmax_auto', type=str2bool, nargs='?', const=True, default=False)
 
-
     parser.add_argument('--dataset_loader', default='dataset_loader/img_0_1.py')
     parser.add_argument('--dataset_input_name', default='input:0')
     parser.add_argument('--dataset_pic_path', default='dataset/yolo')
@@ -104,14 +99,13 @@ def main():
     layer_start_idx = args.layer_start_idx
 
     model_loader = args.model_loader
-    tensorboard_mode = args.tensorboard_mode
-    pb_path = args.pb_path
-    tensor_input_name = args.tensor_input_name
-    tensor_output_name = args.tensor_output_name
-    input_min = args.tensor_input_min
-    input_max = args.tensor_input_max
-    input_minmax_auto = args.tensor_input_minmax_auto
-
+    tensorboard_mode = args.tensorboard_mode  # used in model loader
+    pb_path = args.pb_path  # used in model loader
+    tensor_input_name = args.tensor_input_name  # used in model loader
+    tensor_output_name = args.tensor_output_name  # used in model loader
+    input_min = args.tensor_input_min  # used in model loader
+    input_max = args.tensor_input_max  # used in model loader
+    input_minmax_auto = args.tensor_input_minmax_auto  # used in model loader
 
     dataset_loader = args.dataset_loader
     dataset_input_name = args.dataset_input_name
@@ -133,8 +127,12 @@ def main():
     dataset = overwrite_is_training(dataset)
 
     model_loader_module = tools.import_from_path(model_loader)
-    (output_code, output_bin) = convert(model_loader_module, dataset, args)
-    c_file, h_file = output_code
+    rfb = range_from_batch.RangeFromBatchMinMax()
+    k210_layers = model_loader_module.load_model(dataset, rfb, args)
+
+    c_file, h_file = k210_layer_to_c_code.gen_layer_list_code(
+        k210_layers, args.eight_bit_mode, args.prefix, args.layer_start_idx
+    )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -146,11 +144,14 @@ def main():
         of.write(h_file)
     print('generate {} finish'.format(output_path + '.h'))
 
-    if output_bin is not None:
+    try:
+        output_bin = k210_layer_to_bin.gen_layer_bin(k210_layers, args.eight_bit_mode)
         os.makedirs(os.path.dirname(output_bin_name), exist_ok=True)
         with open(output_bin_name, 'wb') as of:
             of.write(output_bin)
         print('generate bin finish')
+    except Exception as e:
+        print(e)
 
 
 if __name__ == '__main__':

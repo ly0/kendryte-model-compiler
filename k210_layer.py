@@ -175,7 +175,11 @@ class K210BN:
     @staticmethod
     def get_bn(scale, bias):
         norm_shift, norm_mul = 15, scale
-        return {'norm_mul': tools.signed_to_hex(norm_mul, 24), 'norm_add': tools.signed_to_hex(bias, 32), 'norm_shift': norm_shift}
+        return {
+            'norm_mul': tools.signed_to_hex(norm_mul, 24),
+            'norm_add': tools.signed_to_hex(bias, 32),
+            'norm_shift': norm_shift
+        }
 
     def to_k210(self, swsx=1):
         rsqrt_var = 1.0 / np.sqrt(self.var + self.epsilon)
@@ -209,8 +213,8 @@ class K210BN:
 class K210Act:
     def __init__(self, min_y, max_y, ty, eight_bit_mode, tensor_info=None):
         if isinstance(ty, list) or isinstance(ty, tuple):
-            self.ty=ty[0]
-            self.leaky_mul=ty[1]
+            self.ty = ty[0]
+            self.leaky_mul = ty[1]
         else:
             self.ty = ty
         self.eight_bit_mode = eight_bit_mode
@@ -361,7 +365,7 @@ class K210Pool:
 
 class K210Layer:
     def __init__(self, iwo_minmax, ico_shapes, conv_weights_isdw, bn_mean_var_gamma_beta_epsilon, act_type,
-                        pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None, idx=-1):
+                 pool_type_size_stride, eight_bit_mode=False, cbap_tensor_info=None, idx=-1):
         input_min, input_max, weights_min, weights_max, output_min, output_max = iwo_minmax
         input_shape, conv_shape, output_shape = ico_shapes
         conv_weights, conv_isdw = conv_weights_isdw
@@ -370,15 +374,17 @@ class K210Layer:
         ]
 
         output_name = pool_tensor_info.get('name') or act_tensor_info.get('name', 'noname')
+        input_scale, input_bias = tools.min_max_to_scale_bias(input_min, input_max)
         output_scale, output_bias = tools.min_max_to_scale_bias(output_min, output_max)
         layer_shape_trans = [
             int(input_shape[1]), int(input_shape[2]), int(input_shape[3]),
             int(output_shape[1]), int(output_shape[2]), int(output_shape[3])
         ]
         print(
-            "[layer {}]".format(idx), output_name,
-            'shape(WHC): {}x{}x{} => {}x{}x{}'.format(*layer_shape_trans),
-            'scale/bias:', output_scale, output_bias
+            '[layer {}]: {}'.format(idx, output_name),
+            '           shape(WHC): {}x{}x{} ==> {}x{}x{}'.format(*layer_shape_trans),
+            '           scale,bias: ({},{}) ==> ({},{})'.format(input_scale, input_bias, output_scale, output_bias),
+            sep='\n'
         )
 
         self.conv = K210Conv(
@@ -401,7 +407,7 @@ class K210Layer:
         )
 
         self.act = K210Act(output_min, output_max, act_type,
-                                     eight_bit_mode=eight_bit_mode, tensor_info=act_tensor_info)
+                           eight_bit_mode=eight_bit_mode, tensor_info=act_tensor_info)
 
         if pool_type_size_stride is not None:
             pool_type, pool_size, pool_stride = pool_type_size_stride
@@ -462,7 +468,6 @@ class K210Layer:
         return locals()
 
 
-
 def k210_layer_post_fix(kl_args_list):
     def fix_dw_with_strde2(kl_args_list):
         def expand_wh(shape_):
@@ -479,10 +484,10 @@ def k210_layer_post_fix(kl_args_list):
             kl_args_fixed = dict(kl_args)
 
             conv_kernel_size = int(conv_weights.shape[0])
-            conv_stride = int((int(input_shape[2])+1)/int(conv_shape[2]))
+            conv_stride = int((int(input_shape[2]) + 1) / int(conv_shape[2]))
 
             if lack_of_left_pooling:
-                if not conv_isdw and conv_kernel_size==1 and pool_type_size_stride is None:
+                if not conv_isdw and conv_kernel_size == 1 and pool_type_size_stride is None:
                     # fix in current layer
                     input_shape = expand_wh(input_shape)
                     conv_shape = expand_wh(conv_shape)
@@ -490,11 +495,11 @@ def k210_layer_post_fix(kl_args_list):
                     kl_args_fixed['pool_type_size_stride'] = ['leftPool', 2, 2]
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
                 else:
-                    if not (conv_kernel_size==1 and pool_type_size_stride is None):
+                    if not (conv_kernel_size == 1 and pool_type_size_stride is None):
                         raise ValueError(
-                            'run fix_dw_with_strde2 failed. '+
-                            'can not delay left_pooling over current layer, '+
-                            'current layer conv_kernel_size:{}, pool_type_size_stride:{}'\
+                            'run fix_dw_with_strde2 failed. ' +
+                            'can not delay left_pooling over current layer, ' +
+                            'current layer conv_kernel_size:{}, pool_type_size_stride:{}' \
                             .format(conv_kernel_size, pool_type_size_stride)
                         )
 
@@ -503,7 +508,6 @@ def k210_layer_post_fix(kl_args_list):
                     conv_shape = expand_wh(conv_shape)
                     output_shape = expand_wh(output_shape)
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
-
 
             if conv_stride == 2:
                 if not conv_isdw:
@@ -525,7 +529,6 @@ def k210_layer_post_fix(kl_args_list):
                     output_shape = expand_wh(output_shape)
                     kl_args_fixed['ico_shapes'] = [input_shape, conv_shape, output_shape]
 
-
             ret.append(kl_args_fixed)
 
         if lack_of_left_pooling:
@@ -534,13 +537,12 @@ def k210_layer_post_fix(kl_args_list):
 
     def fix_wh_leas_than_4(kl_args_list):
         def force_pad_to_4(shape_):
-                return [shape_[0], 4, 4, shape_[3]]
+            return [shape_[0], 4, 4, shape_[3]]
 
         ret = []
         for kl_args in kl_args_list:
             input_shape, conv_shape, output_shape = kl_args['ico_shapes']
             kl_args_fixed = dict(kl_args)
-
 
             if input_shape[1] < 4 or conv_shape[1] < 4 or output_shape[1] < 4:
                 input_shape = force_pad_to_4(input_shape)
@@ -552,8 +554,6 @@ def k210_layer_post_fix(kl_args_list):
 
         return ret
 
-
     kl_args_list = fix_wh_leas_than_4(kl_args_list)
     kl_args_list = fix_dw_with_strde2(kl_args_list)
     return kl_args_list
-
