@@ -25,22 +25,6 @@ import range_from_batch
 import tools
 
 
-def overwrite_is_training_name(dataset, name):
-    with tf.Session() as sess:
-        try:
-            is_training = sess.graph.get_operation_by_name(name)
-            if is_training is not None:
-                dataset[name + ':0'] = False
-        except:
-            pass
-
-    return dataset
-
-
-def overwrite_is_training(dataset):
-    dataset = overwrite_is_training_name(dataset, 'is_training')
-    dataset = overwrite_is_training_name(dataset, 'phase_train')
-    return dataset
 
 
 # def convert(model_loader, dataset, args):
@@ -75,7 +59,9 @@ def main():
 
     parser.add_argument('--model_loader', default='model_loader/pb')
     parser.add_argument('--tensorboard_mode', type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument('--pb_path', type=str, default='<please set --pb_path>', required=True)
+    parser.add_argument('--pb_path', default=None)
+    parser.add_argument('--cfg_path', default=None)
+    parser.add_argument('--weights_path', default=None)
     parser.add_argument('--tensor_input_name', default=None)
     parser.add_argument('--tensor_output_name', default=None)
     parser.add_argument('--tensor_input_min', type=float, default=0)
@@ -123,12 +109,9 @@ def main():
 
     dataset_val = dataset_loader_module.load_dataset(args)
 
-    dataset = {dataset_input_name: dataset_val}
-    dataset = overwrite_is_training(dataset)
-
     model_loader_module = tools.import_from_path(model_loader)
     rfb = range_from_batch.RangeFromBatchMinMax()
-    k210_layers = model_loader_module.load_model(dataset, rfb, args)
+    k210_layers = model_loader_module.load_model(dataset_val, rfb, args)
 
     c_file, h_file = k210_layer_to_c_code.gen_layer_list_code(
         k210_layers, args.eight_bit_mode, args.prefix, args.layer_start_idx

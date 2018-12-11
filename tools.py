@@ -78,3 +78,21 @@ def import_from_path(module_path):
     sys.path = sys_path
 
     return loaded_module
+
+
+def overwrite_is_training_name(sess, dataset, name):
+    try:
+        is_training = sess.graph.get_operation_by_name(name)
+        if is_training is not None:
+            dataset[name + ':0'] = False
+    except:
+        pass
+
+    return dataset
+
+
+def overwrite_is_training(sess, dataset):
+    dataset = overwrite_is_training_name(sess, dataset, 'is_training')
+    dataset = overwrite_is_training_name(sess, dataset, 'phase_train')
+    return dataset
+
