@@ -20,6 +20,7 @@ import tempfile
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
+import tools
 from . import tensor_list_to_layer_list
 from . import tensor_head_to_tensor_list
 from . import layer_list_to_k210_layer
@@ -45,7 +46,7 @@ def load_graph(pb_file_path, tensor_output_name, tensor_input_name):
     return output_tensor, input_tensor
 
 
-def load_model(dataset, range_from_batch, args):
+def load_model(dataset_val, range_from_batch, args):
     if args.tensorboard_mode:
         load_graph(args.pb_path, None, None)
         graphs_path = tempfile.mkdtemp('graphs')
@@ -57,6 +58,9 @@ def load_model(dataset, range_from_batch, args):
 
     tensor_output, tensor_input = load_graph(args.pb_path, args.tensor_output_name, args.tensor_input_name)
     with tf.Session() as sess:
+        dataset = {args.dataset_input_name: dataset_val}
+        dataset = tools.overwrite_is_training(sess, dataset)
+
         converter = tensor_head_to_tensor_list.PbConverter(tensor_output, tensor_input)
         converter.convert()
         layers = tensor_list_to_layer_list.convert_to_layers(sess, dataset, converter.dst)
