@@ -88,13 +88,14 @@ def load_model(dataset_val, range_from_batch, args):
     decode_darknet(cfg_path, weights_path, build_dir)
     pb_name = 'output'
     dataset_input_name, tensor_output_name, input_w, input_h = darknet2pb(build_dir, pb_name, 'input')
+    assert(args.image_w == input_w)
+    assert(args.image_h == input_h)
+
     pb_path = os.path.join(build_dir, pb_name+'.pb')
 
     args.pb_path = pb_path
     args.tensor_output_name = tensor_output_name
     args.dataset_input_name = dataset_input_name
-    args.image_w = input_w
-    args.image_h = input_h
 
     return pb_loader.load_model(dataset_val, range_from_batch, args)
 

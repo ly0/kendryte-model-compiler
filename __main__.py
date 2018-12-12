@@ -51,6 +51,7 @@ def main():
             raise argparse.ArgumentTypeError('Boolean value expected.')
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset_input_name', default='input:0')
     parser.add_argument('--eight_bit_mode', type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument('--output_path', default='build/gencode_output')
     parser.add_argument('--output_bin_name', default='build/model.bin')
@@ -60,6 +61,7 @@ def main():
     parser.add_argument('--model_loader', default='model_loader/pb')
     parser.add_argument('--tensorboard_mode', type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument('--pb_path', default=None)
+    parser.add_argument('--h5_path', default=None)
     parser.add_argument('--cfg_path', default=None)
     parser.add_argument('--weights_path', default=None)
     parser.add_argument('--tensor_input_name', default=None)
@@ -69,10 +71,10 @@ def main():
     parser.add_argument('--tensor_input_minmax_auto', type=str2bool, nargs='?', const=True, default=False)
 
     parser.add_argument('--dataset_loader', default='dataset_loader/img_0_1.py')
-    parser.add_argument('--dataset_input_name', default='input:0')
     parser.add_argument('--dataset_pic_path', default='dataset/yolo')
     parser.add_argument('--image_w', type=int, default=320)
     parser.add_argument('--image_h', type=int, default=240)
+
 
     args = parser.parse_args()
 
