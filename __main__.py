@@ -81,7 +81,7 @@ def main():
     eight_bit_mode = args.eight_bit_mode
     output_path = args.output_path
     output_bin_name = args.output_bin_name
-    prefix = args.prefix if len(args.prefix) > 0 \
+    args.prefix = args.prefix if len(args.prefix) > 0 \
         else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
 
     layer_start_idx = args.layer_start_idx
@@ -102,7 +102,7 @@ def main():
     image_h = args.image_h  # used in dataset loader
 
     if ':' not in dataset_input_name:
-        dataset_input_name = dataset_input_name + ':0'
+        args.dataset_input_name = dataset_input_name + ':0'
 
     if output_path.endswith('.c'):
         output_path = output_path[:-2]
