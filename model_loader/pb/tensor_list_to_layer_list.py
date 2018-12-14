@@ -107,7 +107,10 @@ class LayerConvolutional(LayerBase):
         elif self.type_match(info, ['Relu6', 'FusedBatchNorm', 'Conv2D']):
             activation, batch_norm, conv2d = info
         else:
-            raise ValueError('not supported convolutional info. with', [node.op.name for node in info], 'as', [node.op.type for node in info])
+            raise ValueError(
+                'not supported convolutional info. with',
+                [node.op.name for node in info], 'as', [node.op.type for node in info]
+            )
 
         self.config['batch_normalize'] = 1 if batch_norm is not None else 0
 
@@ -149,10 +152,13 @@ class LayerConvolutional(LayerBase):
             self.bias = sess.run(bias_add.op.inputs[1], dataset)
 
         if isinstance(batch_norm, list):
-            self.batch_normalize_moving_mean = sess.run(bn_sub.op.inputs[1], dataset) if isinstance(bn_sub,
-                                                                                                    tf.Tensor) else bn_sub
-            self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1], dataset) if isinstance(bn_div,
-                                                                                                        tf.Tensor) else bn_div
+            if isinstance(bn_sub, tf.Tensor) and isinstance(bn_div, tf.Tensor):
+                self.batch_normalize_moving_mean = sess.run(bn_sub.op.inputs[1], dataset)
+                self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1].op.inputs[0], dataset)
+                self.batch_normalize_epsilon = sess.run(bn_div.op.inputs[1].op.inputs[1], dataset)
+            else:
+                self.batch_normalize_moving_mean = bn_sub
+                self.batch_normalize_moving_variance = bn_div
             self.batch_normalize_gamma = sess.run(bn_mul.op.inputs[1], dataset)
             self.batch_normalize_beta = sess.run(bn_add.op.inputs[1], dataset)
         elif batch_norm is not None:
@@ -196,7 +202,7 @@ class LayerConvolutional(LayerBase):
                     batch_norm.name))
 
             self.batch_normalize_epsilon = batch_norm.op.get_attr('epsilon')
-            assert(batch_norm.op.get_attr('is_training') == False)
+            assert (batch_norm.op.get_attr('is_training') == False)
 
 
 class LayerDepthwiseConvolutional(LayerBase):
@@ -228,7 +234,10 @@ class LayerDepthwiseConvolutional(LayerBase):
             activation = ['leaky', leaky_reul_max, leaky_reul_mul]
             batch_norm = [bn_add, bn_mul, bn_div, bn_sub]
         else:
-            raise ValueError('not supported dw_convolutional info. with', [node.op.name for node in info], 'as', [node.op.type for node in info])
+            raise ValueError(
+                'not supported dw_convolutional info. with',
+                [node.op.name for node in info], 'as', [node.op.type for node in info]
+            )
 
         self.config['batch_normalize'] = 1 if batch_norm is not None else 0
 
@@ -267,7 +276,8 @@ class LayerDepthwiseConvolutional(LayerBase):
         if isinstance(batch_norm, list):
             bn_add, bn_mul, bn_div, bn_sub = batch_norm
             self.batch_normalize_moving_mean = sess.run(bn_sub.op.inputs[1], dataset)
-            self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1], dataset)
+            self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1].op.inputs[0], dataset)
+            self.batch_normalize_epsilon = sess.run(bn_div.op.inputs[1].op.inputs[1], dataset)
             self.batch_normalize_gamma = sess.run(bn_mul.op.inputs[1], dataset)
             self.batch_normalize_beta = sess.run(bn_add.op.inputs[1], dataset)
         elif batch_norm is not None:
@@ -300,7 +310,7 @@ class LayerDepthwiseConvolutional(LayerBase):
                 self.batch_normalize_moving_variance = sess.run(variance_tensor, dataset)
 
             self.batch_normalize_epsilon = batch_norm.op.get_attr('epsilon')
-            assert(batch_norm.op.get_attr('is_training') == False)
+            assert (batch_norm.op.get_attr('is_training') == False)
 
 
 class LayerPool(LayerBase):
