@@ -154,7 +154,7 @@ class LayerConvolutional(LayerBase):
         if isinstance(batch_norm, list):
             if isinstance(bn_sub, tf.Tensor) and isinstance(bn_div, tf.Tensor):
                 self.batch_normalize_moving_mean = sess.run(bn_sub.op.inputs[1], dataset)
-                self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1].op.inputs[0], dataset)
+                self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1].op.inputs[0].op.inputs[0], dataset)
                 self.batch_normalize_epsilon = sess.run(bn_div.op.inputs[1].op.inputs[1], dataset)
             else:
                 self.batch_normalize_moving_mean = bn_sub
@@ -276,7 +276,7 @@ class LayerDepthwiseConvolutional(LayerBase):
         if isinstance(batch_norm, list):
             bn_add, bn_mul, bn_div, bn_sub = batch_norm
             self.batch_normalize_moving_mean = sess.run(bn_sub.op.inputs[1], dataset)
-            self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1].op.inputs[0], dataset)
+            self.batch_normalize_moving_variance = sess.run(bn_div.op.inputs[1].op.inputs[0].op.inputs[0], dataset)
             self.batch_normalize_epsilon = sess.run(bn_div.op.inputs[1].op.inputs[1], dataset)
             self.batch_normalize_gamma = sess.run(bn_mul.op.inputs[1], dataset)
             self.batch_normalize_beta = sess.run(bn_add.op.inputs[1], dataset)
