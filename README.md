@@ -18,26 +18,26 @@ pip3 install pillow
 + required options: `--dataset_pic_path` `--image_w` `--image_h`
 
 ### model loader
-`model_loader/pb` loads darknet model.
+`model_loader/pb` loads TensorFlow model.
 + required options: `--pb_path` `--dataset_input_name` `--tensor_output_name`
 + optional options: `--tensorboard_mode` `--tensor_input_name`
 `--tensor_input_min` `--tensor_input_max` `--tensor_input_minmax_auto` 
 `--eight_bit_mode` `--layer_start_idx`
 
-`model_loader/h5` loads darknet model.
+`model_loader/h5` loads Keras model.
 + required options: `--h5_path` `--dataset_input_name` `--tensor_output_name`
 + optional options: `--tensorboard_mode` `--tensor_input_name`
 `--tensor_input_min` `--tensor_input_max` `--tensor_input_minmax_auto` 
 `--eight_bit_mode` `--layer_start_idx`
 
-`model_loader/darknet` loads darknet model.
+`model_loader/darknet` loads DarkNet model.
 + required options: `--cfg_path` `--weights_path`
 + optional options: `--tensorboard_mode`
 `--tensor_input_min` `--tensor_input_max` `--tensor_input_minmax_auto` 
 `--eight_bit_mode` `--layer_start_idx`
 
 
-## useage
+## usage
 `python3 model-compiler --dataset_loader <dataset_loader_path>
  --model_loader <model_loader_path> <options>`
  
