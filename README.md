@@ -31,6 +31,7 @@ pip3 install pillow
 `--eight_bit_mode` `--layer_start_idx`
 
 `model_loader/darknet` loads DarkNet model.
+you should add `pad=0` in pooling section in config file.
 + required options: `--cfg_path` `--weights_path`
 + optional options: `--tensorboard_mode`
 `--tensor_input_min` `--tensor_input_max` `--tensor_input_minmax_auto` 
