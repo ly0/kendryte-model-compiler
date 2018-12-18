@@ -344,4 +344,14 @@ def gen_layer_bin(klayers: [k210_layer.K210Layer], eight_bit_mode):
         param_part += layer.bn_arg
         param_part += layer.weights_arg
 
-    return model_config_part + layer_config_part + param_part
+    model_bin = model_config_part + layer_config_part + param_part
+    if len(model_bin) % 4:
+        model_bin += bytearray(4 - len(model_bin) % 4)
+    model_bin_reverse = bytearray(len(model_bin))
+    for i in range(0, len(model_bin), 4):
+        model_bin_reverse[i] = model_bin[i+3]
+        model_bin_reverse[i+1] = model_bin[i+2]
+        model_bin_reverse[i+2] = model_bin[i+1]
+        model_bin_reverse[i+3] = model_bin[i]
+
+    return model_bin_reverse
