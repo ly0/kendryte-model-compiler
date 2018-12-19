@@ -62,8 +62,6 @@ class RangeFromBatchMeanMinsMaxs:
             maxv = n_batch.max(axis=1).mean()
             return minv, maxv, batch
 
-from copy import deepcopy
-import scipy.stats
 class RangeFromBatchKL:
     BINS_NUMBER = 8192
     QUANTIZE_SIZE = 256
@@ -100,6 +98,8 @@ class RangeFromBatchKL:
 
 
     def calc_kld(self, P, start_bin_max, end_bin_max, start_bin_min, end_bin_min, delta, max_val, min_val):
+        import scipy.stats
+        from copy import deepcopy
         klds = {}
         for i in range(start_bin_max, end_bin_max + 1, self.QUANTIZE_SIZE):
             for j in range(start_bin_min, end_bin_min + 1, self.QUANTIZE_SIZE):

@@ -158,9 +158,9 @@ def gen_layer_code(dlayer, idx):
                         if str(k) not in ('bwsx_base_addr', 'para_start_addr', 'active_addr')
                         else '0'
                     )
-                    for k, v in data.items()
+                    for k, v in sorted(data.items())
                 ]) + '\n }'
-                for reg_name, data in dlayer[0].items()
+                for reg_name, data in sorted(dlayer[0].items())
             ]) +
             '\n}')
 
