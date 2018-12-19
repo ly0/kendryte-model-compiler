@@ -130,7 +130,7 @@ class K210Conv:
         load_coor = 1
 
         first_stride = 0 if stride == 1 else 1
-        assert (256 > (i_col_high if first_stride == 0 else i_col_high / 2))
+        assert (256 >= (i_col_high if first_stride == 0 else i_col_high / 2))
 
         load_time, para_size, o_ch_num_coef = self.para_mult_loads(weights_shape, output_shape, kernel_size)
 
