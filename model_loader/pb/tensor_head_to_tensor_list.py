@@ -110,6 +110,9 @@ class PbConverter:
         elif self.ty_match(['act', 'BiasAdd', 'Conv2D']):
             self.dst.append(['convolutional', *self.pop_src(0, 0, 0)])
             return True
+        elif self.ty_match(['act', 'Add', 'Conv2D']):
+            self.dst.append(['convolutional', *self.pop_src(0, 0, 0)])
+            return True
         elif self.ty_match(['act', 'FusedBatchNorm', 'BiasAdd', 'Conv2D']):
             self.dst.append(['convolutional', *self.pop_src(0, 0, 0, 0)])
             return True
@@ -131,6 +134,9 @@ class PbConverter:
             self.dst.append(['convolutional', *self.pop_src(0, 1, 0, 0, 0, 0)])
             return True
         elif self.ty_match(['Relu6', 'BiasAdd', 'Conv2D']):
+            self.dst.append(['convolutional', *self.pop_src(0, 0, 0)])
+            return True
+        elif self.ty_match(['Relu6', 'Add', 'Conv2D']):
             self.dst.append(['convolutional', *self.pop_src(0, 0, 0)])
             return True
         elif self.ty_match(['act', 'FusedBatchNorm', 'BiasAdd', 'Conv2D']):

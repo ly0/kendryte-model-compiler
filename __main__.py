@@ -79,10 +79,10 @@ def main():
     args = parser.parse_args()
 
     eight_bit_mode = args.eight_bit_mode
-    output_path = args.output_path
+    output_path = os.path.expanduser(args.output_path)
     output_bin_name = args.output_bin_name
     args.prefix = args.prefix if len(args.prefix) > 0 \
-        else os.path.basename(args.output_path).replace('.', '_').replace('-', '_')
+        else os.path.basename(output_path).replace('.', '_').replace('-', '_')
 
     layer_start_idx = args.layer_start_idx
 

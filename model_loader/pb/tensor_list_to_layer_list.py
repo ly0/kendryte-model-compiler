@@ -68,6 +68,8 @@ class LayerConvolutional(LayerBase):
             batch_norm = [bn_add, bn_mul, bn_div, bn_sub]
         elif self.type_match(info, ['BiasAdd', 'Conv2D']):
             bias_add, conv2d = info
+        elif self.type_match(info, ['Relu', 'Add', 'Conv2D']):
+            activation, bias_add, conv2d = info
         elif self.type_match(info, ['Relu', 'BiasAdd', 'Conv2D']):
             activation, bias_add, conv2d = info
         elif self.type_match(info, ['Relu', 'FusedBatchNorm', 'Conv2D']):
